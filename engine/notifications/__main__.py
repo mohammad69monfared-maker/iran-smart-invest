@@ -8,6 +8,7 @@ import time
 
 from ..alerts import check as check_alerts
 from ..providers import Tsetmc
+from ..reports.jalali import to_jalali
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -88,7 +89,14 @@ def format_signals(signals):
         if not isinstance(signal, dict):
             blocks.append(display(signal))
             continue
-        lines = [f"{label}: {signal[key]}" for key, label in SIGNAL_FIELDS if signal.get(key) is not None]
+        lines = []
+        for key, label in SIGNAL_FIELDS:
+            value = signal.get(key)
+            if value is None:
+                continue
+            if key == "expires" and isinstance(value, str) and len(value) == 10:
+                value = f"{to_jalali(value)} ({value})"
+            lines.append(f"{label}: {value}")
         if not lines:
             blocks.append(display(signal))
             continue
@@ -116,14 +124,17 @@ def render(command, report, today, watch=None):
     # late publication), so freshness is based on when the report was made.
     fresh = date == today or (bool(generated) and generated == today)
     if command == "/status":
-        return (f"جلسه تحلیل: {date}\ntاریخ انتشار: {generated or '—'}\n"
+        session = f"{to_jalali(date)} ({date})" if date else "—"
+        published = f"{to_jalali(generated)} ({generated})" if generated else "—"
+        return (f"جلسه تحلیل: {session}\ntاریخ انتشار: {published}\n"
                 f"وضعیت: {report.get('status', 'نامشخص')}\n"
                 f"نمادهای بررسی‌شده: {report.get('scanned', 0)} | رد‌شده: {report.get('rejected', 0)}\n"
                 f"{report.get('summary', '')}")
     if not fresh:
         return f"گزارش تازه در دسترس نیست. آخرین انتشار مربوط به {generated or date} است."
     if command in ("/report", "/today"):
-        return (f"گزارش بورس {date}\n{report.get('summary', '')}\n\n"
+        label = f"{to_jalali(date)} ({date})" if date else "—"
+        return (f"گزارش بورس {label}\n{report.get('summary', '')}\n\n"
                 f"{render('/signals', report, today)}\n{render('/alerts', report, today)}")
     if command == "/signals":
         if report.get("status") not in ("ok", "partial"):

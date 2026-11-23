@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:iran_smart_invest/jalali.dart';
 import 'package:iran_smart_invest/main.dart';
 import 'package:iran_smart_invest/report_store.dart';
 
@@ -42,6 +43,12 @@ void main() {
     final next = MarketStore();
     await next.restore();
     expect(next.connected, isFalse);
+  });
+
+  test('solar hijri conversion is correct', () {
+    expect(toJalali('2026-11-23'), '۱۴۰۵/۰۹/۰۲');
+    expect(toJalali('2026-03-21'), '۱۴۰۵/۰۱/۰۱');
+    expect(toJalali('not-a-date'), 'not-a-date');
   });
 
   testWidgets('app renders right-to-left with the dark shell', (tester) async {

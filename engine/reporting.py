@@ -5,6 +5,8 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from .reports.jalali import to_jalali
+
 
 def archive(storage, code, bars, board, symbol, market):
     # closing() is required on Windows: a bare `with connect()` only commits,
@@ -39,7 +41,10 @@ def render(storage, report):
                            ("target2", "هدف دوم"), ("reward_risk", "نسبت سود به زیان"),
                            ("horizon", "افق زمانی"), ("risk_level", "سطح ریسک"),
                            ("expires", "انقضا"), ("status", "وضعیت")):
-            rows.append(f"<tr><th>{title}</th><td><bdi>{esc(signal.get(key, '—'))}</bdi></td></tr>")
+            value = signal.get(key, '—')
+            if key == "expires" and isinstance(value, str) and len(value) == 10:
+                value = f"{to_jalali(value)} ({value})"
+            rows.append(f"<tr><th>{title}</th><td><bdi>{esc(value)}</bdi></td></tr>")
         reasons = "، ".join(signal.get("reasons") or []) or "—"
         risks = "، ".join(signal.get("risks") or []) or "—"
         fundamental = signal.get("fundamentals") or {}
@@ -88,7 +93,8 @@ def render(storage, report):
             "<tr><td><bdi>{}</bdi></td><td><bdi>{}</bdi></td><td><bdi>{}</bdi></td>"
             "<td><bdi>{}</bdi></td><td><bdi>{}</bdi></td><td>{}</td></tr>".format(
                 esc(item.get("symbol") or "—"), esc(item.get("group") or "—"),
-                esc(item.get("date") or "—"), esc(item.get("last_price") or "—"),
+                (to_jalali(item["date"]) + f" ({item['date']})") if item.get("date") else "—",
+                esc(item.get("last_price") or "—"),
                 esc(tech.get("rsi14", "—")), state))
     global_table = (
         "<table><tr><th>نماد</th><th>بازار</th><th>تاریخ داده</th><th>آخرین قیمت</th>"
@@ -104,7 +110,7 @@ def render(storage, report):
     td{{padding:4px 8px}} pre{{white-space:pre-wrap;direction:ltr;text-align:left}}
     .muted{{color:#9fb3cc}} .banner{{background:#1d2c44;border-right:4px solid #e7bf74}}
     </style><h1>گزارش بورس ایران</h1>
-    <section class="banner"><p>تاریخ داده <bdi>{esc(report['date'])}</bdi> · زمان پردازش <bdi>{esc(report['generated_at'])}</bdi></p>
+    <section class="banner"><p>تاریخ داده <bdi>{to_jalali(report['date'])} ({esc(report['date'])})</bdi> · زمان پردازش <bdi>{to_jalali(report['generated_at'][:10])} ({esc(report['generated_at'][:10])})</bdi></p>
     <h2>{esc(report['summary'])}</h2>
     <p>نمادهای بررسیشده {report['scanned']} · ردشده {report['rejected']} · رتبهبندیخارجشده {report.get('ranked_out', 0)}</p>
     <p>{indices}</p></section>

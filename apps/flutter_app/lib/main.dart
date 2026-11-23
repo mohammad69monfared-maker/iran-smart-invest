@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'jalali.dart';
 import 'report_store.dart' as data;
 
 void main() => runApp(const InvestApp());
@@ -17,6 +18,7 @@ const panels = [
   'دیده‌بان',
   'عملکرد',
   'تنظیمات',
+  'بازارهای جهانی',
 ];
 const icons = [
   Icons.dashboard_outlined,
@@ -26,6 +28,7 @@ const icons = [
   Icons.visibility_outlined,
   Icons.insights,
   Icons.settings_outlined,
+  Icons.public,
 ];
 
 class InvestApp extends StatelessWidget {
@@ -307,7 +310,7 @@ class _MarketHomeState extends State<MarketHome> {
     });
   }
 
-  static const appVersion = '1.2.0';
+  static const appVersion = '1.3.0';
 
   int _compareVersion(String a, String b) {
     final x = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
@@ -396,6 +399,7 @@ class _MarketHomeState extends State<MarketHome> {
     line('نسبت سود به زیان', s['reward_risk'] ?? s['risk_reward']),
     line('دلایل', s['reasons']),
     line('شرایط ابطال', s['invalidation']),
+    if (s['expires'] != null) line('اعتبار تا', faDate(s['expires'].toString())),
     line('منبع', s['sources'] ?? s['source']),
     if (s['market'] != null) line('بازار', s['market']),
     if (s['technical'] is Map)
@@ -418,8 +422,8 @@ class _MarketHomeState extends State<MarketHome> {
               Text(store.connected ? 'منبع گزارش: حساب ابری' : 'منبع گزارش: فایل محلی ویندوز'),
               if (stale)
                 const Text('گزارش بایگانی‌شده', style: TextStyle(color: gold)),
-              line('تاریخ داده', report!['date']),
-              line('زمان تولید', report!['generated_at']),
+              line('تاریخ داده', faDate(report!['date']?.toString())),
+              line('زمان تولید', faDate(report!['generated_at']?.toString())),
               line('خلاصه', report!['summary']),
               line('نمادهای بررسی‌شده', report!['scanned']),
               line('نمادهای ردشده', report!['rejected']),
@@ -433,7 +437,7 @@ class _MarketHomeState extends State<MarketHome> {
           ...alerts.map(
             (a) => card('هشدار', [
               line('شرح', a['message']),
-              line('زمان', a['created_at']),
+              line('زمان', faDate(a['created_at']?.toString())),
             ]),
           ),
           for (final a in report?['alerts'] as List? ?? [])
@@ -574,6 +578,33 @@ class _MarketHomeState extends State<MarketHome> {
               else
                 const Text('نتیجهٔ ثبت‌شده‌ای در گزارش موجود نیست.'),
             ]),
+        ];
+      case 7:
+        final global = (report?['global'] as Map?) ?? {};
+        final items = (global['summaries'] as List? ?? []).whereType<data.Row>().toList();
+        return [
+          card('بازارهای جهانی', [
+            if (items.isEmpty)
+              const Text('داده معتبری از منابع عمومی دریافت نشد.'),
+            ...items.map((item) {
+              final tech = (item['technical'] as Map?) ?? {};
+              return card(
+                '${show(item['symbol'])} — ${show(item['group'])}',
+                [
+                  line('تاریخ داده', faDate(item['date']?.toString())),
+                  line('آخرین قیمت', item['last_price']),
+                  line('واحد', item['currency']),
+                  line('RSI14', tech['rsi14']),
+                  line('ADX14', tech['adx14']),
+                  line('توضیح تکنیکال', tech['note']),
+                  line('نتیجه', item['signal'] == true
+                      ? 'سیگنال دارد'
+                      : (item['reason'] ?? 'بدون سیگنال')),
+                  line('منبع', item['source']),
+                ],
+              );
+            }),
+          ]),
         ];
       default:
         return [
