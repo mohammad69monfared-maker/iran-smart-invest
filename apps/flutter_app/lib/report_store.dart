@@ -63,7 +63,8 @@ class MarketStore {
     required bool retry,
     required bool auth,
   }) async {
-    final client = HttpClient(findProxy: (_) => 'DIRECT')
+    final client = HttpClient()
+      ..findProxy = (_) => 'DIRECT'
       ..connectionTimeout = const Duration(seconds: 15)
       ..idleTimeout = const Duration(seconds: 10);
     try {
