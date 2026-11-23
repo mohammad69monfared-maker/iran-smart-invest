@@ -1,8 +1,9 @@
 name: Telegram bot replies
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/2 * * * *'
+  # The always-on local poller (IranSmartInvestBot) answers commands in real
+  # time. GitHub's scheduler is delayed by up to an hour, so keep this manual
+  # as a fallback only; concurrent pollers can duplicate replies.
 permissions:
   contents: read
 concurrency:
