@@ -1,7 +1,7 @@
 import sqlite3
 import unittest
 from unittest.mock import patch
-from engine.notifications.__main__ import deliver, render, reply
+from engine.notifications.__main__ import LABEL_TO_COMMAND, deliver, keyboard, render, reply
 
 
 class TelegramTests(unittest.TestCase):
@@ -36,6 +36,15 @@ class TelegramTests(unittest.TestCase):
             for _ in range(2):
                 deliver("mock", "123", "گزارش", db, "2026-11-22")
             call.assert_called_once()
+
+    @patch("engine.notifications.__main__.telegram")
+    def test_persian_button_uses_reply_keyboard(self, call):
+        label = next(iter(LABEL_TO_COMMAND))
+        update = {"message": {"chat": {"id": 123, "type": "private"},
+                              "from": {"id": 123}, "text": label}}
+        reply(update, "mock", "123", self.report, "2026-11-22")
+        self.assertEqual(call.call_args.kwargs["reply_markup"], keyboard())
+        self.assertIn("آزمایشی", call.call_args.kwargs["text"])
 
     @patch("engine.notifications.__main__.telegram", side_effect=RuntimeError("offline"))
     def test_failed_delivery_remains_retryable(self, call):

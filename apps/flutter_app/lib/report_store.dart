@@ -13,6 +13,21 @@ class MarketStore {
 
   bool get connected => token != null;
 
+  Uri _validate() {
+    final base = Uri.parse(endpoint.trim());
+    if (base.scheme != 'https' ||
+        base.host.isEmpty ||
+        base.userInfo.isNotEmpty ||
+        (base.path.isNotEmpty && base.path != '/') ||
+        base.query.isNotEmpty) {
+      throw const FormatException('نشانی HTTPS معتبر وارد کنید.');
+    }
+    return base;
+  }
+
+  /// Some Windows networks close a reused TLS connection before the response
+  /// headers arrive. Each call therefore uses a fresh DIRECT connection and a
+  /// single retry; no request is ever duplicated once it has been answered.
   Future<dynamic> request(
     String path, {
     String method = 'GET',
@@ -20,27 +35,55 @@ class MarketStore {
     bool retry = true,
     bool auth = true,
   }) async {
-    final base = Uri.parse(endpoint.trim());
-    if (base.scheme != 'https' ||
-        base.host.isEmpty ||
-        base.userInfo.isNotEmpty) {
-      throw const FormatException('نشانی HTTPS معتبر وارد کنید.');
+    final base = _validate();
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await _send(base, path, method: method, body: body,
+            retry: retry, auth: auth);
+      } on SocketException catch (error) {
+        lastError = error;
+      } on HttpException catch (error) {
+        if (attempt == 0 &&
+            !error.message.toLowerCase().contains('header') &&
+            !error.message.toLowerCase().contains('closed')) {
+          rethrow;
+        }
+        lastError = error;
+      }
     }
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12);
+    throw lastError ?? const HttpException('درخواست ناموفق بود.');
+  }
+
+  Future<dynamic> _send(
+    Uri base,
+    String path, {
+    required String method,
+    Row? body,
+    required bool retry,
+    required bool auth,
+  }) async {
+    final client = HttpClient(findProxy: (_) => 'DIRECT')
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..idleTimeout = const Duration(seconds: 10);
     try {
       final req = await client.openUrl(method, base.resolve(path));
       req.followRedirects = false;
+      req.persistentConnection = false;
       req.headers.set('apikey', key.trim());
-      if (auth && token != null)
+      req.headers.set('User-Agent', 'IranSmartInvest/1.0');
+      if (auth && token != null) {
         req.headers.set('Authorization', 'Bearer $token');
-      req.headers.contentType = ContentType.json;
-      if (body != null) req.write(jsonEncode(body));
-      final res = await req.close().timeout(const Duration(seconds: 20));
+      }
+      if (body != null) {
+        req.headers.contentType = ContentType.json;
+        req.write(jsonEncode(body));
+      }
+      final res = await req.close().timeout(const Duration(seconds: 25));
       final raw = await utf8.decoder
           .bind(res)
           .join()
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 25));
       if (res.statusCode == 401 && auth && retry && _refreshToken != null) {
         final session = await request(
           '/auth/v1/token?grant_type=refresh_token',
@@ -96,8 +139,9 @@ class MarketStore {
     for (var root in roots) {
       for (var i = 0; i < 12; i++) {
         final file = File('${root.path}/data/latest.json');
-        if (await file.exists())
+        if (await file.exists()) {
           return jsonDecode(await file.readAsString()) as Row;
+        }
         if (root.parent.path == root.path) break;
         root = root.parent;
       }

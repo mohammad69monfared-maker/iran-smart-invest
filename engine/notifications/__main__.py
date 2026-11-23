@@ -20,6 +20,27 @@ HELP = (
 )
 REPORT = Path("data/latest.json")
 
+# A Persian reply keyboard so the bot is usable without typing slash commands.
+KEYBOARD_ROWS = (
+    ("گزارش امروز", "فرصت\u200cها"),
+    ("هشدارها", "سبد من"),
+    ("دیده\u200cبان", "وضعیت", "راهنما"),
+)
+LABEL_TO_COMMAND = {
+    "گزارش امروز": "/report",
+    "فرصت\u200cها": "/signals",
+    "هشدارها": "/alerts",
+    "سبد من": "/portfolio",
+    "دیده\u200cبان": "/watch",
+    "وضعیت": "/status",
+    "راهنما": "/help",
+}
+
+
+def keyboard():
+    return {"keyboard": [list(row) for row in KEYBOARD_ROWS],
+            "resize_keyboard": True, "one_time_keyboard": False}
+
 SIGNAL_FIELDS = (
     ("symbol", "نماد"),
     ("last_price", "قیمت آخر"),
@@ -111,13 +132,17 @@ def render(command, report, today, watch=None):
     return HELP
 
 
-def deliver(token, owner, message, db=None, date=""):
+def deliver(token, owner, message, db=None, date="", markup=None):
     for pos in range(0, len(message), 1800):
         chunk = message[pos:pos + 1800]
-        key = hashlib.sha256(f"{owner}/{date}/{pos}/{chunk}".encode()).hexdigest()
+        key = hashlib.sha256(
+            f"{owner}/{date}/{pos}/{bool(markup)}/{chunk}".encode()).hexdigest()
         if db and db.execute("select 1 from sent where id=?", (key,)).fetchone():
             continue
-        telegram(token, "sendMessage", chat_id=owner, text=chunk)
+        body = dict(chat_id=owner, text=chunk)
+        if markup:
+            body["reply_markup"] = markup
+        telegram(token, "sendMessage", **body)
         if db:
             db.execute("insert or ignore into sent values (?)", (key,))
             db.commit()
@@ -147,14 +172,30 @@ def reply(update, token, owner, report, today, db=None):
     chat = msg.get("chat") or {}
     if chat.get("type") != "private" or str(chat.get("id")) != owner or str((msg.get("from") or {}).get("id")) != owner:
         return
-    words = msg.get("text", "").split()
-    if not words:
+    text = (msg.get("text") or "").strip()
+    if not text:
         return
-    command = words[0].split("@")[0].lower()
+    command = None
+    argument = ""
+    for label, mapped in LABEL_TO_COMMAND.items():
+        if text == label or text.startswith(label + " "):
+            command = mapped
+            argument = text[len(label):].strip()
+            break
+    if command is None:
+        words = text.split()
+        command = words[0].split("@")[0].lower()
+        argument = words[1].strip() if len(words) > 1 else ""
+    if command == "/watch" and not argument:
+        # Tapping the Persian "دیدهبان" button shows the current list.
+        deliver(token, owner, render("/watch", report, today, watchlist(db)),
+                markup=keyboard())
+        return
     if command in ("/watch", "/unwatch"):
-        deliver(token, owner, update_watch(db, command, words[1].strip() if len(words) > 1 else ""))
+        deliver(token, owner, update_watch(db, command, argument), markup=keyboard())
         return
-    deliver(token, owner, render(command, report, today, watchlist(db)))
+    deliver(token, owner, render(command, report, today, watchlist(db)),
+            markup=keyboard())
 
 
 def load_report():
@@ -198,7 +239,8 @@ def main():
                 report = load_report()
                 if action == "publish":
                     if report.get("date") == today:
-                        deliver(token, owner, render("/report", report, today), db, today)
+                        deliver(token, owner, render("/report", report, today), db, today,
+                                markup=keyboard())
                         print("Telegram report delivered or previously sent.")
                     else:
                         print("No current report to send.")
