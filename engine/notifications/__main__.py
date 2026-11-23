@@ -152,6 +152,27 @@ def reply(update, token, owner, report, today, db=None):
     deliver(token, owner, render(command, report, today, watchlist(db)))
 
 
+def load_report():
+    """Prefer the local snapshot, then the published cloud copy."""
+    if REPORT.exists():
+        try:
+            return json.loads(REPORT.read_text(encoding="utf-8-sig"))
+        except ValueError:
+            return {}
+    url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    if not url or not key:
+        return {}
+    req = Request(f"{url}/rest/v1/daily_reports?select=report&order=report_date.desc&limit=1",
+                  headers={"apikey": key, "Authorization": "Bearer " + key})
+    try:
+        with urlopen(req, timeout=20) as stream:
+            rows = json.load(stream)
+    except (OSError, ValueError):
+        return {}
+    return rows[0].get("report", {}) if rows else {}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("publish", "poll"))
@@ -169,7 +190,7 @@ def main():
         while True:
             today = datetime.now(timezone(timedelta(hours=3, minutes=30))).date().isoformat()
             try:
-                report = json.loads(REPORT.read_text(encoding="utf-8-sig")) if REPORT.exists() else {}
+                report = load_report()
                 if action == "publish":
                     if report.get("date") == today:
                         deliver(token, owner, render("/report", report, today), db, today)
@@ -177,12 +198,28 @@ def main():
                     else:
                         print("No current report to send.")
                     return 0
-                row = db.execute("select cursor from cursor_state where id=1").fetchone()
-                for update in telegram(token, "getUpdates", offset=row[0] if row else 0,
+                cursor_file = os.getenv("TELEGRAM_CURSOR_FILE", "").strip()
+                if cursor_file:
+                    if os.path.exists(cursor_file):
+                        cursor = int(open(cursor_file, encoding="utf-8").read().strip() or 0)
+                    else:
+                        cursor = 0
+                else:
+                    row = db.execute("select cursor from cursor_state where id=1").fetchone()
+                    cursor = row[0] if row else 0
+                for update in telegram(token, "getUpdates", offset=cursor,
                                        timeout=25, allowed_updates=["message"]):
                     reply(update, token, owner, report, today, db)
-                    with db:
-                        db.execute("insert or replace into cursor_state values(1,?)", (update["update_id"] + 1,))
+                    cursor = update["update_id"] + 1
+                    if cursor_file:
+                        with open(cursor_file, "w", encoding="utf-8") as fh:
+                            fh.write(str(cursor))
+                    else:
+                        with db:
+                            db.execute("insert or replace into cursor_state values(1,?)", (cursor,))
+                if os.getenv("TELEGRAM_POLL_ONCE", "").strip():
+                    print("Telegram polled once.")
+                    return 0
             except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
                 print(f"Telegram failed ({type(exc).__name__})", flush=True)
                 if action == "publish":

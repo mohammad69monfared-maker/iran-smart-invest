@@ -1,0 +1,40 @@
+name: Telegram bot replies
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: iran-smart-invest-bot
+  cancel-in-progress: false
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore bot cursor
+        uses: actions/cache/restore@v4
+        with:
+          path: data/telegram.cursor
+          key: telegram-cursor-${{ github.run_id }}
+          restore-keys: telegram-cursor-
+      - name: Poll and reply
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CURSOR_FILE: data/telegram.cursor
+          TELEGRAM_POLL_ONCE: '1'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m engine.notifications poll
+      - name: Save bot cursor
+        if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: data/telegram.cursor
+          key: telegram-cursor-${{ github.run_id }}-${{ github.run_attempt }}
