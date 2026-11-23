@@ -13,7 +13,7 @@ class MarketStore {
   String? owner;
   String? _refreshToken;
 
-  static const vault = FlutterSecureStorage();
+  static final vault = FlutterSecureStorage();
   static const sessionKey = 'market_session_v1';
   String emailAddress = '';
 
