@@ -63,10 +63,10 @@ class MarketStore {
     required bool retry,
     required bool auth,
   }) async {
-    final client = HttpClient()
-      ..findProxy = (_) => 'DIRECT'
-      ..connectionTimeout = const Duration(seconds: 15)
-      ..idleTimeout = const Duration(seconds: 10);
+    final client = HttpClient();
+    client.findProxy = (_) => 'DIRECT';
+    client.connectionTimeout = const Duration(seconds: 15);
+    client.idleTimeout = const Duration(seconds: 10);
     try {
       final req = await client.openUrl(method, base.resolve(path));
       req.followRedirects = false;
