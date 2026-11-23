@@ -3,7 +3,9 @@ import json
 import os
 import sqlite3
 import tempfile
+import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +24,12 @@ TEHRAN = timezone(timedelta(hours=3, minutes=30))
 # Avoids thousands of history/board requests for instruments that cannot pass
 # the 20-session liquidity requirement anyway.
 PRE_FILTER_VALUE = 5_000_000_000
+# Every inspected symbol costs two network round trips, so a sequential scan
+# over the whole liquid universe cannot finish inside a CI job. TSETMC access
+# is stateless and each archive write uses its own connection, therefore a
+# small thread pool is safe. Both limits are overridable for slow networks.
+SCAN_WORKERS = max(1, min(16, int(os.environ.get("SCAN_WORKERS", "8"))))
+SCAN_BUDGET_SECONDS = float(os.environ.get("SCAN_BUDGET_SECONDS", "4200"))
 
 
 def analyze(now, storage, provider, codal, weights):
@@ -53,28 +61,29 @@ def analyze(now, storage, provider, codal, weights):
     flow_observations = 0
     candidates, quotes, books = [], {}, {}
     failed = fresh = 0
-    for instrument in instruments:
-        report["scanned"] += 1
+
+    def inspect(instrument):
+        """Fetch and evaluate one symbol; never raises, always reports why."""
         symbol, code = instrument["symbol"], instrument["code"]
+        fresh_at = now.isoformat()
         quick_value = instrument.get("value")
         if quick_value is not None and quick_value < PRE_FILTER_VALUE:
-            reasons["نقدشوندگی اولیه تأیید نشد"] += 1
-            quality.record(source="TSETMC", symbol=symbol, fetched_at=now.isoformat(),
-                           data_time=instrument.get("date"), valid=False, completeness=0.0,
-                           errors=("ارزش معاملات زیر آستانه اولیه",))
-            continue
+            return dict(kind="skipped", reason="نقدشوندگی اولیه تأیید نشد",
+                        quality=dict(source="TSETMC", symbol=symbol, fetched_at=fresh_at,
+                                     data_time=instrument.get("date"), valid=False,
+                                     completeness=0.0,
+                                     errors=("ارزش معاملات زیر آستانه اولیه",)))
         try:
             bars = provider.history(code)
             valid, why = validate_bars(bars, day)
-            quality.record(
+            quality_entry = dict(
                 source="TSETMC", symbol=symbol,
-                fetched_at=bars[-1].get("fetched_at", now.isoformat()) if bars else now.isoformat(),
+                fetched_at=bars[-1].get("fetched_at", fresh_at) if bars else fresh_at,
                 data_time=bars[-1]["date"] if bars else None, valid=valid,
                 completeness=min(1.0, len(bars) / 60) if bars else 0.0,
                 errors=() if valid else (why,))
             if not valid:
-                reasons[why] += 1
-                continue
+                return dict(kind="skipped", reason=why, quality=quality_entry)
             # The dated price history is the freshness authority; the
             # market-watch snapshot no longer exposes a reliable date.
             instrument["date"] = bars[-1]["date"]
@@ -84,26 +93,64 @@ def analyze(now, storage, provider, codal, weights):
             book = tablovani(bars, board, instrument, day)
             market.update(book)
             archive(storage, code, bars, board, symbol, market)
+            signal, reason = evaluate(symbol, bars, as_of=day, market=market, weights=weights)
+            return dict(kind="ok", quality=quality_entry, bars=bars, board=board,
+                        market=market, book=book, signal=signal, reason=reason)
+        except (ProviderError, ValueError, KeyError, TypeError, sqlite3.Error):
+            return dict(kind="failed", reason="دادهٔ منبع ناقص یا در دسترس نیست",
+                        quality=dict(source="TSETMC", symbol=symbol, fetched_at=fresh_at,
+                                     data_time=None, valid=False, completeness=0.0,
+                                     errors=("داده منبع ناقص یا در دسترس نیست",)))
+
+    total = len(instruments)
+    collected = []
+    started = time.monotonic()
+    deadline = started + SCAN_BUDGET_SECONDS
+    pool = ThreadPoolExecutor(max_workers=max(1, min(SCAN_WORKERS, total)))
+    unfinished = 0
+    try:
+        futures = {pool.submit(inspect, instrument): index
+                   for index, instrument in enumerate(instruments)}
+        try:
+            for done, future in enumerate(as_completed(futures), 1):
+                collected.append((futures[future], future.result()))
+                if done % 100 == 0 or done == total:
+                    print(f"scanned {done}/{total} in {time.monotonic() - started:.0f}s", flush=True)
+                if time.monotonic() > deadline:
+                    print("scan budget reached; publishing a partial report", flush=True)
+                    break
+        except TimeoutError:
+            print("scan budget reached while waiting; publishing a partial report", flush=True)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    collected.sort(key=lambda pair: pair[0])
+    unfinished = total - len(collected)
+
+    for index, result in collected:
+        quality.record(**result["quality"])
+        kind = result["kind"]
+        if kind == "ok":
+            bars, board = result["bars"], result["board"]
+            market, book = result["market"], result["book"]
             fresh += 1
             turnover += bars[-1].get("value") or 0
-            sectors[instrument.get("sector") or "نامشخص"] += bars[-1].get("value") or 0
+            sectors[instruments[index].get("sector") or "نامشخص"] += bars[-1].get("value") or 0
             if board.get("net_retail_value") is not None:
                 net_retail += board["net_retail_value"]
                 flow_observations += 1
             if market.get("last_price"):
-                quotes[symbol] = market["last_price"]
-            books[symbol] = book
-            signal, reason = evaluate(symbol, bars, as_of=day, market=market, weights=weights)
-            if signal:
-                candidates.append((signal, bars, market))
+                quotes[instruments[index]["symbol"]] = market["last_price"]
+            books[instruments[index]["symbol"]] = book
+            if result["signal"]:
+                candidates.append((result["signal"], bars, market))
             else:
-                reasons[reason] += 1
-        except (ProviderError, ValueError, KeyError, TypeError):
-            failed += 1
-            quality.record(source="TSETMC", symbol=symbol, fetched_at=now.isoformat(),
-                           data_time=None, valid=False, completeness=0.0,
-                           errors=("داده منبع ناقص یا در دسترس نیست",))
-            reasons["دادهٔ منبع ناقص یا در دسترس نیست"] += 1
+                reasons[result["reason"]] += 1
+        else:
+            failed += kind == "failed"
+            reasons[result["reason"]] += 1
+    report["scanned"] = total
+    if unfinished:
+        reasons["به پایان نرسیدن اسکن در بودجه زمانی"] += unfinished
 
     report["observed_turnover_rial"] = turnover if fresh else None
     report["observed_net_retail_rial"] = net_retail if flow_observations else None

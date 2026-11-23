@@ -9,7 +9,9 @@ from pathlib import Path
 def archive(storage, code, bars, board, symbol, market):
     # closing() is required on Windows: a bare `with connect()` only commits,
     # it does not release the file handle, which blocks cleanup and rotation.
-    with closing(sqlite3.connect(storage / "history.sqlite3")) as db, db:
+    # The scan runs in a thread pool, so a busy-timeout is needed to serialise
+    # concurrent writers instead of failing with "database is locked".
+    with closing(sqlite3.connect(storage / "history.sqlite3", timeout=60)) as db, db:
         db.execute("create table if not exists bars(code text, day text, observation text, primary key(code,day))")
         db.execute("create table if not exists boards(code text, day text, observation text, primary key(code,day))")
         db.execute("create table if not exists sessions(code text, day text, observation text, primary key(code,day))")

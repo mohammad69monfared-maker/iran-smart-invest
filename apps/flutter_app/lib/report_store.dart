@@ -49,7 +49,7 @@ class MarketStore {
           auth: false,
         );
         _session(session);
-        return request(path, method: method, body: body, retry: false);
+        return await request(path, method: method, body: body, retry: false);
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw HttpException('درخواست پذیرفته نشد (HTTP ${res.statusCode}).');

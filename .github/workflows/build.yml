@@ -40,6 +40,10 @@ jobs:
           flutter pub get
       - name: Validate Dart
         run: flutter analyze --no-fatal-infos
+      - name: Widget and store tests
+        run: |
+          flutter test --reporter compact
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build
         shell: pwsh
         env:

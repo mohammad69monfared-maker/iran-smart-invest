@@ -1,0 +1,21 @@
+# Local analyzer configuration.
+# It is deliberately self-contained: pulling package:flutter_lints would add a
+# dev dependency that must be resolved before analysis can run in CI.
+analyzer:
+  errors:
+    deprecated_member_use: ignore
+  exclude:
+    - build/**
+    - android/**
+    - windows/**
+    - linux/**
+    - macos/**
+    - web/**
+
+linter:
+  rules:
+    - avoid_print
+    - prefer_const_constructors
+    - prefer_final_locals
+    - unnecessary_this
+    - use_super_parameters
