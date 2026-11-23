@@ -46,7 +46,7 @@ flutter build windows --release
 - ربات: `@Smartborss1bot` — پاسخ فقط در چت خصوصی صاحب ربات. دستورها: `/report`, `/signals`, `/alerts`, `/portfolio`, `/watch`, `/unwatch`, `/status`, `/help`.
 - گردشکارها: `daily.yml` (هر روز ۱۰:۳۵ UTC = ۱۴:۰۵ تهران، شنبه تا چهارشنبه + اجرای دستی)، `telegram-bot.yml` (هر ۱۰ دقیقه + اجرای دستی)، `build.yml` (دستی؛ خروجی APK و EXE بهصورت Artifact).
 - زمانبندی محلی: وظیفهٔ `IranSmartInvestDaily` در Task Scheduler ویندوز نصبشده و هر روز ساعت ۱۴:۰۵ به زمان تهران اجرا میشود.
-- ربات تلگرام: وظیفهٔ `IranSmartInvestBot` هنگام ورود به ویندوز اجرا میشود و با long-polling فوری پاسخ میدهد. گردشکار `telegram-bot.yml` فقط بهصورت دستی و بهعنوان جایگزین است.
+- ربات تلگرام: گردشکار `telegram-bot.yml` پنجرههای کوتاه long-polling را زنجیره میکند تا پیامها با تأخیر کم پاسخ بگیرند. وظیفهٔ محلی `IranSmartInvestBot` فقط جایگزین اختیاری است و بهطور پیشفرض غیرفعال است.
 - اسکن کامل بازار حدود ۸ دقیقه با ۸ کارگر موازی طول میکشد؛ سقف زمانی قابلتنظیم است (`SCAN_WORKERS`, `SCAN_BUDGET_SECONDS`).
 
 هیچ سیگنال تضمینی وجود ندارد و خرید و فروش خودکار در نسخهٔ حاضر نیست.

@@ -246,6 +246,8 @@ def main():
         print("Telegram disabled: missing token or private owner ID.")
         return 0
     REPORT.parent.mkdir(exist_ok=True)
+    poll_window = float(os.getenv("TELEGRAM_POLL_SECONDS", "0") or 0)
+    poll_started = time.monotonic()
     if action == "poll":
         threading.Thread(target=alert_loop, args=(token, owner), daemon=True).start()
     with sqlite3.connect(REPORT.parent / "telegram.sqlite3") as db:
@@ -285,6 +287,9 @@ def main():
                             db.execute("insert or replace into cursor_state values(1,?)", (cursor,))
                 if os.getenv("TELEGRAM_POLL_ONCE", "").strip():
                     print("Telegram polled once.")
+                    return 0
+                if poll_window and time.monotonic() - poll_started >= poll_window:
+                    print("Telegram poll window finished.", flush=True)
                     return 0
             except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
                 print(f"Telegram failed ({type(exc).__name__})", flush=True)

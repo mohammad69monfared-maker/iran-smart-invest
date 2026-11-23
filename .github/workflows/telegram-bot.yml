@@ -1,18 +1,19 @@
 name: Telegram bot replies
 on:
   workflow_dispatch:
-  # The always-on local poller (IranSmartInvestBot) answers commands in real
-  # time. GitHub's scheduler is delayed by up to an hour, so keep this manual
-  # as a fallback only; concurrent pollers can duplicate replies.
+  schedule:
+    # Fallback only; normal operation is a self-chaining short polling window.
+    - cron: '0 * * * *'
 permissions:
   contents: read
+  actions: write
 concurrency:
   group: iran-smart-invest-bot
   cancel-in-progress: false
 jobs:
   reply:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,7 +30,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CURSOR_FILE: data/telegram.cursor
-          TELEGRAM_POLL_ONCE: '1'
+          TELEGRAM_POLL_SECONDS: '280'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python -m engine.notifications poll
@@ -39,3 +40,14 @@ jobs:
         with:
           path: data/telegram.cursor
           key: telegram-cursor-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Chain next polling window
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPO/actions/workflows/telegram-bot.yml/dispatches" \
+            -d '{"ref":"main"}'
