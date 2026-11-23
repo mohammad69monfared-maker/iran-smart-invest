@@ -6,13 +6,13 @@
 
 | مورد | وضعیت |
 |---|---|
-| مخزن GitHub | `mohammad69monfared-maker/iran-smart-invest` (خصوصی)، شاخه `main` |
+| مخزن GitHub | `mohammad69monfared-maker/iran-smart-invest` (عمومی، تا گردشکارها بدون محدودیت دقایق رایگان اجرا شوند)، شاخه `main` |
 | Supabase | پروژه `kskrukdiilmvywsnwbxc` (eu-west-1, Postgres 17) — دو migration اعمالشده، ۲۳ جدول عمومی بهعلاوهٔ یک جدول خصوصی، ۲۳ سیاست RLS |
 | کلیدها | پنج Secret در GitHub Actions: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | ربات تلگرام | `@Smartborss1bot` — منو و توضیحات تنظیمشده، پاسخ فقط در چت خصوصی صاحب ربات (`1406488214`) |
-| گردشکارها | `daily.yml` (روزانه ۱۴:۰۵ تهران، شنبه تا چهارشنبه)، `telegram-bot.yml` (هر ۱۰ دقیقه)، `build.yml` (ساخت APK و EXE) |
+| گردشکارها | `daily.yml` (روزانه ۱۴:۰۵ تهران، شنبه تا چهارشنبه)، `telegram-bot.yml` (هر ۲ دقیقه)، `build.yml` (ساخت APK و EXE) |
 | ساخت APK و EXE | گردشکار ساخت موفق (اجرای `45159911022`) و خروجیها در پوشه `artifacts/` ذخیرهشدهاند |
-| تستها | ۳۹ تست، همگی موفق |
+| تستها | ۴۰ تست، همگی موفق |
 - حساب اپ (`smartborss@iransmartinvest.ir`) در جدول `investment_private.report_readers` ثبتشده تا سیاست RLS اجازه خواندنReports را بدهد.
 | زمانبندی محلی | وظیفهٔ `IranSmartInvestDaily` در Task Scheduler ویندوز نصب و Ready است |
 
