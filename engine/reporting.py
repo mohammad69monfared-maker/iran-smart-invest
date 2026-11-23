@@ -52,6 +52,8 @@ def render(storage, report):
             f"<p><b>خطرات:</b> <bdi>{esc(risks)}</bdi></p>"
             f"<p><b>داده بنیادی:</b> {availability} · <b>دوره:</b> "
             f"<bdi>{esc(fundamental.get('period') or '—')}</bdi></p>"
+            f"<p><b>تکنیکال:</b> <bdi>{esc((signal.get('technical') or {}).get('note', '—'))}</bdi></p>"
+            f"<p><b>جزئیات بنیادی:</b> <bdi>{esc(signal.get('fundamental_note') or '—')}</bdi></p>"
             f"<p><b>تابلوبانی:</b> جریان حقیقی <bdi>{esc(book.get('net_retail_value', '—'))}</bdi> · "
             f"قدرت خریدار <bdi>{esc(book.get('buyer_power', '—'))}</bdi> · "
             f"نسبت حجم <bdi>{esc(round(book['volume_ratio'], 2) if book.get('volume_ratio') is not None else '—')}</bdi></p>"
@@ -78,6 +80,20 @@ def render(storage, report):
     portfolio = (report.get("portfolio") or {}).get("totals", {})
     market_value = esc(portfolio.get("market_value") if portfolio.get("market_value") is not None else "—")
     sources = esc(json.dumps(report.get("sources", {}), ensure_ascii=False, indent=2))
+    global_rows = []
+    for item in (report.get("global") or {}).get("summaries", []):
+        tech = item.get("technical") or {}
+        state = "سیگنال دارد" if item.get("signal") else esc(item.get("reason") or "بدون سیگنال")
+        global_rows.append(
+            "<tr><td><bdi>{}</bdi></td><td><bdi>{}</bdi></td><td><bdi>{}</bdi></td>"
+            "<td><bdi>{}</bdi></td><td><bdi>{}</bdi></td><td>{}</td></tr>".format(
+                esc(item.get("symbol") or "—"), esc(item.get("group") or "—"),
+                esc(item.get("date") or "—"), esc(item.get("last_price") or "—"),
+                esc(tech.get("rsi14", "—")), state))
+    global_table = (
+        "<table><tr><th>نماد</th><th>بازار</th><th>تاریخ داده</th><th>آخرین قیمت</th>"
+        "<th>RSI14</th><th>نتیجه</th></tr>" + "".join(global_rows) + "</table>"
+        if global_rows else "<p>داده معتبری از منابع عمومی دریافت نشد.</p>")
     content = f"""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش بورس ایران</title>
     <style>
@@ -94,6 +110,8 @@ def render(storage, report):
     <p>{indices}</p></section>
     <section><h2>سلامت منابع داده</h2><p>{quality_line}</p><p class="muted">{rejection_line}</p></section>
     <section><h2>صنایع بر اساس ارزش معاملات مشاهدهشده</h2><p>{industry_line or '—'}</p></section>
+    <section><h2>بازارهای جهانی: طلا، فارکس و رمز ارز</h2>{global_table}
+    <p class="muted">قیمت طلای جهانی از قرارداد COMEX و طلای توکنشده از Binance است؛ معادل قیمت سکه و طلای فیزیکی ایران نیست.</p></section>
     {''.join(cards)}
     <section><h2>سبد سهام و هشدارها</h2><p>ارزش ثبتشده {market_value}</p><ul>{alerts}</ul></section>
     <section><h2>روایت گزارش</h2><pre>{narrative}</pre></section>

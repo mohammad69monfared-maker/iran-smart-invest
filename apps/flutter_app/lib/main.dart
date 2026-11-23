@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'report_store.dart' as data;
 
@@ -151,8 +153,10 @@ class _MarketHomeState extends State<MarketHome> {
   }
 
   Future<void> refresh() => run(reload);
-  List<data.Row> get opportunities =>
-      (report?['signals'] as List? ?? []).whereType<data.Row>().toList();
+  List<data.Row> get opportunities => [
+        ...(report?['signals'] as List? ?? []),
+        ...((((report?['global'] as Map?)?['signals'] as List?) ?? [])),
+      ].whereType<data.Row>().toList();
   String get today => DateTime.now()
       .toUtc()
       .add(const Duration(hours: 3, minutes: 30))
@@ -303,6 +307,71 @@ class _MarketHomeState extends State<MarketHome> {
     });
   }
 
+  static const appVersion = '1.2.0';
+
+  int _compareVersion(String a, String b) {
+    final x = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final y = b.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    for (var i = 0; i < 3; i++) {
+      final left = i < x.length ? x[i] : 0;
+      final right = i < y.length ? y[i] : 0;
+      if (left != right) return left > right ? 1 : -1;
+    }
+    return 0;
+  }
+
+  Future<void> checkForUpdate() async {
+    const manifest = 'https://raw.githubusercontent.com/'
+        'mohammad69monfared-maker/iran-smart-invest/main/apps/flutter_app/version.json';
+    final client = HttpClient();
+    client.findProxy = (_) => 'DIRECT';
+    try {
+      final req = await client.getUrl(Uri.parse(manifest));
+      final res = await req.close().timeout(const Duration(seconds: 20));
+      final info = jsonDecode(await utf8.decoder.bind(res).join()) as Map<String, dynamic>;
+      final latest = (info['version'] ?? '').toString();
+      if (_compareVersion(latest, appVersion) <= 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('شما از آخرین نسخه استفاده میکنید.')));
+        }
+        return;
+      }
+      final link = (info['url'] ?? '').toString();
+      final notes = (info['notes'] ?? '').toString();
+      if (link.isEmpty || !link.startsWith('https://')) {
+        throw const FormatException('آدرس نسخه جدید معتبر نیست.');
+      }
+      if (!mounted) return;
+      final install = await showDialog<bool>(
+        context: context,
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text('نسخهٔ $latest در دسترس است'),
+            content: Text(notes.isEmpty ? 'آیا صفحهٔ دانلود باز شود؟' : notes),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false),
+                  child: const Text('بعداً')),
+              TextButton(onPressed: () => Navigator.pop(context, true),
+                  child: const Text('دانلود')),
+            ],
+          ),
+        ),
+      );
+      if (install == true) {
+        await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('بررسی بروزرسانی ناموفق بود.')));
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   Widget loginHint() => card('ورود به حساب', [
     const Text('برای نمایش داده‌های شخصی وارد حساب خود شوید.'),
     action('تنظیم اتصال', () => setState(() => page = 6)),
@@ -328,6 +397,10 @@ class _MarketHomeState extends State<MarketHome> {
     line('دلایل', s['reasons']),
     line('شرایط ابطال', s['invalidation']),
     line('منبع', s['sources'] ?? s['source']),
+    if (s['market'] != null) line('بازار', s['market']),
+    if (s['technical'] is Map)
+      line('تکنیکال', (s['technical'] as Map)['note'] ?? ''),
+    if (s['fundamental_note'] != null) line('بنیادی', s['fundamental_note']),
   ]);
   List<Widget> content() {
     final stale = report != null && report!['date'] != today;
@@ -504,6 +577,10 @@ class _MarketHomeState extends State<MarketHome> {
         ];
       default:
         return [
+          card('بروزرسانی برنامه', [
+            line('نسخهٔ نصبشده', appVersion),
+            action('بررسی نسخهٔ جدید', checkForUpdate),
+          ]),
           if (!store.connected)
             card('اتصال به حساب', [
               input(endpoint, 'نشانی پروژه Supabase'),

@@ -13,7 +13,8 @@ from pathlib import Path
 from .providers import Tsetmc, Codal, market_context, ProviderError
 from .data import QualityTracker, validate_bars, tablovani, FundamentalAnalyzer
 from .reporting import archive, render
-from .reports import build_narrative, optional_ollama
+from .reports import build_narrative, optional_ollama, technical, fundamental_note
+from .providers.global_markets import analyze_global
 from .quant import evaluate
 from .portfolio import Ledger
 from .cloud import publish_report, CloudError
@@ -217,6 +218,8 @@ def analyze(now, storage, provider, codal, weights):
     # Fundamentals are retrieved only for the strongest candidates. A growth
     # figure is used only when two genuinely comparable periods were parsed.
     analyzer = FundamentalAnalyzer(codal)
+    bars_by_symbol = {instruments[i]["symbol"]: result["bars"]
+                      for i, result in collected if result["kind"] == "ok"}
     finalists = []
     for signal, bars, market in candidates[:8]:
         symbol = signal["symbol"]
@@ -239,10 +242,18 @@ def analyze(now, storage, provider, codal, weights):
                 improved.update(fundamentals=fundamentals, tablovani=books.get(symbol, {}),
                                 disclosures=fundamentals["disclosures"])
                 signal = improved
+        signal["technical"] = technical(bars_by_symbol.get(symbol, []))
+        signal["fundamental_note"] = fundamental_note(fundamentals)
         finalists.append(signal)
     finalists.sort(key=lambda s: (-s.get("score", 0), s["symbol"]))
     report["signals"] = finalists[:5]
-
+    # Public gold/FX/crypto context is an optional section: a failure there
+    # must never suppress the validated stock signals.
+    try:
+        report["global"] = analyze_global(weights=weights)
+    except (ProviderError, ValueError, OSError, KeyError, TypeError) as exc:
+        report["global"] = dict(status="unavailable", signals=[], summaries=[],
+                                error=type(exc).__name__)
     ledger = Ledger(storage / "portfolio.sqlite3")
     ledger.mark_signals(quotes, day)
     ledger.observe_signals(report["signals"], day)

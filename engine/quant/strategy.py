@@ -23,7 +23,9 @@ def evaluate(symbol, bars, *, as_of, market, weights=None):
         ind=indicators(bars)
         close=float(bars[-1]["close"])
         price=float(market["last_price"])
-        if not isfinite(price) or price<=0 or float(bars[-1]["volume"])<=0:
+        # FX pairs have no exchange volume; other markets must have traded.
+        volume_ok=bool(market.get("volume_ok", float(bars[-1]["volume"])>0))
+        if not isfinite(price) or price<=0 or not volume_ok:
             raise ValueError
         optional={k:float(market.get(k) or 0) for k in ("buyer_power","earnings_growth","relative_strength")}
         if not all(map(isfinite,optional.values())):

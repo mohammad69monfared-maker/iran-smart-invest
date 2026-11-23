@@ -3,7 +3,11 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 import time
+
+from ..alerts import check as check_alerts
+from ..providers import Tsetmc
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -219,6 +223,19 @@ def load_report():
     return rows[0].get("report", {}) if rows else {}
 
 
+def alert_loop(token, owner):
+    """Check real quotes against published levels once a minute."""
+    path = str(REPORT.parent / "alerts.sqlite3")
+    while True:
+        time.sleep(60)
+        try:
+            report = load_report()
+            for message in check_alerts(report, path, tsetmc=Tsetmc()):
+                deliver(token, owner, message)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error):
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("publish", "poll"))
@@ -229,6 +246,8 @@ def main():
         print("Telegram disabled: missing token or private owner ID.")
         return 0
     REPORT.parent.mkdir(exist_ok=True)
+    if action == "poll":
+        threading.Thread(target=alert_loop, args=(token, owner), daemon=True).start()
     with sqlite3.connect(REPORT.parent / "telegram.sqlite3") as db:
         db.execute("create table if not exists sent(id text primary key)")
         db.execute("create table if not exists cursor_state(id integer primary key, cursor integer)")
