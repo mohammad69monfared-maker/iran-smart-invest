@@ -37,6 +37,13 @@ jobs:
             flutter create --platforms=${{ matrix.platform }} --no-pub --org ir.iransmartinvest --project-name iran_smart_invest .
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          if ('${{ matrix.platform }}' -eq 'android') {
+            foreach ($density in 'mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi') {
+              Copy-Item "assets/launcher/$density.png" "android/app/src/main/res/mipmap-$density/ic_launcher.png" -Force
+            }
+          } else {
+            Copy-Item assets/launcher/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          }
           flutter pub get
       - name: Validate Dart
         run: flutter analyze --no-fatal-infos

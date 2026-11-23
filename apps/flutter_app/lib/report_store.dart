@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 typedef Row = Map<String, dynamic>;
 
 class MarketStore {
@@ -10,6 +12,28 @@ class MarketStore {
   String? token;
   String? owner;
   String? _refreshToken;
+
+  static const vault = FlutterSecureStorage();
+  static const sessionKey = 'market_session_v1';
+  String emailAddress = '';
+
+  Future<void> restore() async {
+    final raw = await vault.read(key: sessionKey);
+    if (raw == null) return;
+    try {
+      final saved = jsonDecode(raw) as Row;
+      endpoint = saved['endpoint'] as String;
+      key = saved['key'] as String;
+      emailAddress = saved['email'] as String? ?? '';
+      _validate();
+      token = saved['access'] as String?;
+      owner = saved['owner'] as String?;
+      _refreshToken = saved['refresh'] as String?;
+    } catch (_) {
+      // A damaged or outdated session must never block the app startup.
+      await logout();
+    }
+  }
 
   bool get connected => token != null;
 
@@ -39,9 +63,16 @@ class MarketStore {
     Object? lastError;
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        return await _send(base, path, method: method, body: body,
-            retry: retry, auth: auth);
+        return await _send(
+          base,
+          path,
+          method: method,
+          body: body,
+          retry: retry,
+          auth: auth,
+        );
       } on SocketException catch (error) {
+        if (method != 'GET') rethrow;
         lastError = error;
       } on HttpException catch (error) {
         if (attempt == 0 &&
@@ -49,6 +80,7 @@ class MarketStore {
             !error.message.toLowerCase().contains('closed')) {
           rethrow;
         }
+        if (method != 'GET') rethrow;
         lastError = error;
       }
     }
@@ -92,8 +124,13 @@ class MarketStore {
           body: {'refresh_token': _refreshToken},
           auth: false,
         );
-        _session(session);
+        await _session(session);
         return await request(path, method: method, body: body, retry: false);
+      }
+      if (!auth && path.endsWith('grant_type=refresh_token') &&
+          (res.statusCode == 400 || res.statusCode == 401)) {
+        await logout();
+        throw const HttpException('نشست منقضی شده است. دوباره وارد شوید.');
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw HttpException('درخواست پذیرفته نشد (HTTP ${res.statusCode}).');
@@ -104,15 +141,26 @@ class MarketStore {
     }
   }
 
-  void _session(dynamic data) {
+  Future<void> _session(dynamic data) async {
     token = data['access_token'] as String;
     owner = data['user']['id'] as String;
-    _refreshToken = data['refresh_token'] as String?;
+    _refreshToken = data['refresh_token'] as String;
+    await vault.write(
+      key: sessionKey,
+      value: jsonEncode({
+        'endpoint': endpoint,
+        'key': key,
+        'email': emailAddress,
+        'owner': owner,
+        'access': token,
+        'refresh': _refreshToken,
+      }),
+    );
   }
 
   Future<void> login(String email, String password) async {
-    logout();
-    _session(
+    emailAddress = email.trim();
+    await _session(
       await request(
         '/auth/v1/token?grant_type=password',
         method: 'POST',
@@ -122,7 +170,8 @@ class MarketStore {
     );
   }
 
-  void logout() {
+  Future<void> logout() async {
+    await vault.delete(key: sessionKey);
     token = null;
     owner = null;
     _refreshToken = null;

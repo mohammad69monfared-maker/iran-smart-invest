@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -60,6 +61,7 @@ class _MarketHomeState extends State<MarketHome> {
       email = TextEditingController(),
       password = TextEditingController(),
       query = TextEditingController();
+  Timer? _sync;
   int page = 0;
   bool busy = false;
   String? error;
@@ -76,11 +78,27 @@ class _MarketHomeState extends State<MarketHome> {
     super.initState();
     endpoint.text = store.endpoint;
     keyField.text = store.key;
-    refresh();
+    run(() async {
+      await store.restore();
+      if (!mounted) return;
+      endpoint.text = store.endpoint;
+      keyField.text = store.key;
+      email.text = store.emailAddress;
+      await reload();
+    });
+    _sync = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (mounted &&
+          store.connected &&
+          !busy &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        refresh();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _sync?.cancel();
     for (final t in [endpoint, keyField, email, password, query]) {
       t.dispose();
     }
@@ -319,11 +337,12 @@ class _MarketHomeState extends State<MarketHome> {
           card('آخرین گزارش', [
             if (report == null)
               Text(
-                Platform.isWindows
-                    ? 'هنوز گزارشی در دسترس نیست. با اجرای موتور تحلیل یا اتصال حساب، گزارش اینجا نمایش داده می‌شود.'
-                    : 'برای دریافت گزارش، وارد حساب شوید.',
+                store.connected
+                    ? 'برای این حساب گزارشی از سرور دریافت نشد. انتشار گزارش و دسترسی حساب به گزارش‌ها را بررسی کنید.'
+                    : 'برای همگام‌سازی، در هر دو دستگاه با یک حساب و یک پروژه وارد شوید.',
               ),
             if (report != null) ...[
+              Text(store.connected ? 'منبع گزارش: حساب ابری' : 'منبع گزارش: فایل محلی ویندوز'),
               if (stale)
                 const Text('گزارش بایگانی‌شده', style: TextStyle(color: gold)),
               line('تاریخ داده', report!['date']),
@@ -529,7 +548,7 @@ class _MarketHomeState extends State<MarketHome> {
             action(
               'خروج از حساب',
               () => run(() async {
-                store.logout();
+                await store.logout();
                 portfolio = null;
                 positions = [];
                 portfolios = [];

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iran_smart_invest/main.dart';
 import 'package:iran_smart_invest/report_store.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   test('store rejects a non-HTTPS endpoint', () async {
     final store = MarketStore()..endpoint = 'http://example.com';
     await expectLater(
@@ -20,11 +23,25 @@ void main() {
     );
   });
 
-  test('store starts disconnected and forgets the session on logout', () {
+  test('store starts disconnected and forgets the session on logout', () async {
     final store = MarketStore();
     expect(store.connected, isFalse);
-    store.logout();
+    await store.logout();
     expect(store.connected, isFalse);
+  });
+
+  test('restores owner and endpoint and removes persisted session on logout', () async {
+    FlutterSecureStorage.setMockInitialValues({MarketStore.sessionKey:
+        '{"endpoint":"https://example.com","key":"test","email":"test@example.com","access":"test","refresh":"test","owner":"owner"}'});
+    final store = MarketStore();
+    await store.restore();
+    expect(store.owner, 'owner');
+    expect(store.emailAddress, 'test@example.com');
+    expect(store.endpoint, 'https://example.com');
+    await store.logout();
+    final next = MarketStore();
+    await next.restore();
+    expect(next.connected, isFalse);
   });
 
   testWidgets('app renders right-to-left with the dark shell', (tester) async {
