@@ -11,7 +11,7 @@ concurrency:
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,6 +26,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SCAN_WORKERS: '8'
+          SCAN_BUDGET_SECONDS: '2400'
         run: python -m engine
       - name: Send daily report
         if: ${{ !cancelled() && hashFiles('data/latest.json') != '' }}

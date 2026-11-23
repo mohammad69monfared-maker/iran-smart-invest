@@ -13,6 +13,7 @@
 | گردشکارها | `daily.yml` (روزانه ۱۴:۰۵ تهران، شنبه تا چهارشنبه)، `telegram-bot.yml` (هر ۱۰ دقیقه)، `build.yml` (ساخت APK و EXE) |
 | ساخت APK و EXE | گردشکار ساخت موفق (اجرای `45159911022`) و خروجیها در پوشه `artifacts/` ذخیرهشدهاند |
 | تستها | ۳۹ تست، همگی موفق |
+- حساب اپ (`smartborss@iransmartinvest.ir`) در جدول `investment_private.report_readers` ثبتشده تا سیاست RLS اجازه خواندنReports را بدهد.
 | زمانبندی محلی | وظیفهٔ `IranSmartInvestDaily` در Task Scheduler ویندوز نصب و Ready است |
 
 ## ۲. داده و تحلیل واقعی
