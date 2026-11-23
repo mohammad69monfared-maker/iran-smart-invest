@@ -86,12 +86,17 @@ def render(command, report, today, watch=None):
     if not report:
         return "هنوز گزارشی ثبت نشده است."
     date = report.get("date")
+    generated = str(report.get("generated_at") or "")[:10]
+    # The analysis may describe the last published session (a holiday or a
+    # late publication), so freshness is based on when the report was made.
+    fresh = date == today or (bool(generated) and generated == today)
     if command == "/status":
-        return (f"تاریخ تحلیل: {date}\nوضعیت: {report.get('status', 'نامشخص')}\n"
+        return (f"جلسه تحلیل: {date}\ntاریخ انتشار: {generated or '—'}\n"
+                f"وضعیت: {report.get('status', 'نامشخص')}\n"
                 f"نمادهای بررسی‌شده: {report.get('scanned', 0)} | رد‌شده: {report.get('rejected', 0)}\n"
                 f"{report.get('summary', '')}")
-    if date != today:
-        return f"گزارش امروز در دسترس نیست. آخرین گزارش مربوط به {date} است."
+    if not fresh:
+        return f"گزارش تازه در دسترس نیست. آخرین انتشار مربوط به {generated or date} است."
     if command in ("/report", "/today"):
         return (f"گزارش بورس {date}\n{report.get('summary', '')}\n\n"
                 f"{render('/signals', report, today)}\n{render('/alerts', report, today)}")

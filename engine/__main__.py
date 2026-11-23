@@ -7,7 +7,7 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .providers import Tsetmc, Codal, market_context, ProviderError
@@ -30,6 +30,39 @@ PRE_FILTER_VALUE = 5_000_000_000
 # small thread pool is safe. Both limits are overridable for slow networks.
 SCAN_WORKERS = max(1, min(16, int(os.environ.get("SCAN_WORKERS", "8"))))
 SCAN_BUDGET_SECONDS = float(os.environ.get("SCAN_BUDGET_SECONDS", "4200"))
+# A report may describe the previous published session (weekend, holiday or a
+# late exchange publication) but never an older one.
+MAX_SESSION_AGE_DAYS = 4
+
+
+def latest_session(provider, instruments, sample=24):
+    """Return the newest session the exchange actually published bars for.
+
+    The market-watch snapshot carries no trustworthy trading date and the
+    overview may point at the current calendar day before any trade is
+    recorded. The dated price history is the authority, so the answer is the
+    majority last-bar date of the most liquid instruments.
+    """
+    ordered = sorted(instruments, key=lambda item: -(item.get("value") or 0))[:sample]
+    if not ordered:
+        return None
+
+    def last_bar_date(instrument):
+        try:
+            bars = provider.history(instrument["code"])
+        except (ProviderError, ValueError, KeyError, TypeError):
+            return None
+        return bars[-1]["date"] if bars else None
+
+    votes = Counter()
+    with ThreadPoolExecutor(max_workers=max(1, min(SCAN_WORKERS, len(ordered)))) as pool:
+        for session in pool.map(last_bar_date, ordered):
+            if session:
+                votes[session] += 1
+    if not votes:
+        return None
+    session, count = votes.most_common(1)[0]
+    return session if count * 2 >= len(ordered) else None
 
 
 def analyze(now, storage, provider, codal, weights):
@@ -50,9 +83,32 @@ def analyze(now, storage, provider, codal, weights):
                    valid=True, completeness=1.0)
     try:
         overview = provider.overview()
-        report["market"] = overview if overview.get("date") == day else {}
     except ProviderError:
-        report["market"] = {}
+        overview = {}
+    # The exchange publishes a closing session slightly after the bell, and on
+    # holidays it publishes nothing at all. Anchor the analysis on the newest
+    # session that really exists instead of assuming today traded.
+    session = latest_session(provider, instruments)
+    if not session:
+        report.update(status="unavailable",
+                      summary="آخرین جلسه معاملاتی مشخص نشد. سیگنالی صادر نشد.")
+        return report
+    age = (now.date() - date.fromisoformat(session)).days
+    report["session"] = session
+    report["session_age_days"] = age
+    if age < 0 or age > MAX_SESSION_AGE_DAYS:
+        report.update(status="unavailable",
+                      summary=f"آخرین داده معتبر مربوط به {session} است و برای تحلیل امروز کافی نیست.")
+        return report
+    day = session
+    report["date"] = session
+    # The index snapshot is informational and is never fed into signal scoring.
+    # Keep its own publication date visible instead of implying it belongs to
+    # the session used for the signals.
+    report["market"] = dict(overview) if overview else {}
+    if overview and overview.get("date") != session:
+        report["sources"]["TSETMC index"] = (
+            f"تاریخ شاخص ({overview.get('date')}) با جلسه تحلیل ({session}) هم\u200cخوان نیست")
 
     reasons = Counter()
     sectors = Counter()

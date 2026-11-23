@@ -47,6 +47,13 @@ def parse_history(records, as_of=None):
             reference = number(row.get("priceYesterday")) or reference
             skipped += 1
             continue
+        # TSETMC's official closing price (pClosing) is a session average and
+        # can fall marginally outside the min/max of the individual trades. An
+        # OHLC bar must still contain its own open and close, so the reported
+        # range is widened to include them. Nothing is invented: every level
+        # below was actually reported for that session.
+        high = max(high, opening, close, last)
+        low = min(low, opening, close, last)
         if result:
             if reference is None or reference <= 0:
                 raise ProviderError("Missing price adjustment reference")

@@ -59,13 +59,15 @@ def evaluate(symbol, bars, *, as_of, market, weights=None):
     atr=ind["atr14"]*price/close
     if not criteria["trend"][0] or score<67 or not 0<atr<price/3:
         return None,"شرایط روند، امتیاز یا ریسک احراز نشد"
-    low,high=price-.25*atr,price+.25*atr
-    stop=low-1.5*atr
+    # Prices are quoted in whole rials; publishing float noise is misleading.
+    low,high=round(price-.25*atr),round(price+.25*atr)
+    stop=round(low-1.5*atr)
     risk=high-stop
     parameters=dict(version="trend-1",weights=params,threshold=67)
     key=json.dumps([symbol,str(day),parameters],sort_keys=True).encode()
     return dict(id=hashlib.sha256(key).hexdigest()[:32],symbol=symbol,date=str(day),score=round(score,2),
-                last_price=price,entry_low=low,entry_high=high,stop_loss=stop,target1=high+2*risk,target2=high+3*risk,
+                last_price=round(price),entry_low=low,entry_high=high,stop_loss=stop,
+                target1=round(high+2*risk),target2=round(high+3*risk),
                 reward_risk=2,expires=str(day+timedelta(days=4)),horizon="تا ۱۰ جلسه",risk_level="ریسک بازار سهام",
                 status="مشروط",invalidation="شکستن حد ضرر، انقضا یا توقف معامله",
                 risks=["احتمال تشکیل صف و اجرا نشدن در قیمت هدف"],reasons=[r for ok,r in criteria.values() if ok],

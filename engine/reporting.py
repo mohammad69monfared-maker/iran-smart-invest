@@ -62,6 +62,8 @@ def render(storage, report):
         f"{label} <bdi>{esc(overview.get(key) or '—')}</bdi>"
         for key, label in (("index", "شاخص کل"), ("equal_weight", "شاخص هموزن"),
                            ("change", "تغییر شاخص"), ("turnover", "ارزش معاملات")))
+    if overview.get("date"):
+        indices += f" · تاریخ شاخص <bdi>{esc(overview['date'])}</bdi>"
     alerts = "".join(f"<li><bdi>{esc(a)}</bdi></li>" for a in report.get("alerts", []))
     quality = report.get("data_quality") or {}
     quality_line = (f"بررسیشده {quality.get('checked', 0)} · معتبر {quality.get('valid', 0)} · "

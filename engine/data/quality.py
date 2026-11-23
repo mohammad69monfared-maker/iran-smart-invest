@@ -32,6 +32,10 @@ def validate_bars(bars, as_of, *, min_bars=60):
         opening, high, low, close, volume, value = values
         if not (0 < low <= min(opening, close) <= max(opening, close) <= high):
             return False, "محدوده قیمتی ناسازگار است"
+        # A genuine session cannot span more than half its own high: Iran's
+        # daily limits make that impossible, so such a row is a data fault.
+        if (high - low) / high > 0.5:
+            return False, "محدوده قیمتی ناسازگار است"
         if day > str(as_of):
             return False, "داده آینده در محاسبات گذشته استفاده شده است"
         days.append(day)

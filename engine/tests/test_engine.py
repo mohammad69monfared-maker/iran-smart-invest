@@ -73,6 +73,18 @@ class EngineIntegrationTests(unittest.TestCase):
         render(storage, report)
         self.assertIn("آزمون", (storage / "report.html").read_text(encoding="utf-8"))
 
+    def test_stale_session_is_never_published(self):
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        # Tuesday, more than four days after the last synthetic session.
+        now = datetime(2026, 12, 15, 15, 0, tzinfo=TEHRAN)
+        report = analyze(now, Path(tmp.name), FakeProvider(synthetic_bars()),
+                         FakeCodal(), {})
+        self.assertEqual(report["status"], "unavailable")
+        self.assertEqual(report["signals"], [])
+        self.assertEqual(report["session"], str(DAY))
+        self.assertGreater(report["session_age_days"], 4)
+
     def test_calendar_and_hours_guard(self):
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
