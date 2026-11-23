@@ -41,9 +41,20 @@ jobs:
       - name: Validate Dart
         run: flutter analyze --no-fatal-infos
       - name: Build
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          if ('${{ matrix.platform }}' -eq 'android') { flutter build apk --debug }
-          else { flutter build windows --release }
+          $defines = @()
+          if ($env:SUPABASE_URL) { $defines += "--dart-define=SUPABASE_URL=$env:SUPABASE_URL" }
+          if ($env:SUPABASE_ANON_KEY) { $defines += "--dart-define=SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY" }
+          if ('${{ matrix.platform }}' -eq 'android') {
+            flutter build apk --debug @defines
+          } else {
+            flutter build windows --release @defines
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: IranSmartInvest-${{ matrix.platform }}
