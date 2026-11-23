@@ -1,0 +1,4 @@
+# The analysis engine runs on the Python standard library only.
+# These optional packages are available for offline research notebooks.
+# numpy>=1.26
+# pandas>=2.2

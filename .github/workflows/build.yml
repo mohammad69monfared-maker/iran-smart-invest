@@ -1,0 +1,51 @@
+name: Build Android and Windows
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: android
+            output: apps/flutter_app/build/app/outputs/flutter-apk/app-debug.apk
+          - runner: windows-latest
+            platform: windows
+            output: apps/flutter_app/build/windows/x64/runner/Release/
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Prepare Flutter runner
+        run: |
+          if (-not (Test-Path '${{ matrix.platform }}')) {
+            flutter create --platforms=${{ matrix.platform }} --no-pub --org ir.iransmartinvest --project-name iran_smart_invest .
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          flutter pub get
+      - name: Validate Dart
+        run: flutter analyze --no-fatal-infos
+      - name: Build
+        run: |
+          if ('${{ matrix.platform }}' -eq 'android') { flutter build apk --debug }
+          else { flutter build windows --release }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IranSmartInvest-${{ matrix.platform }}
+          path: ${{ matrix.output }}
+          if-no-files-found: error

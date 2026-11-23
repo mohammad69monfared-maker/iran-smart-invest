@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iran-smart-invest"
+version = "0.1.0"
+description = "موتور تحلیل سرمایهگذاری بورس ایران مبتنی بر داده واقعی"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+analysis = [
+  "numpy>=1.26",
+  "pandas>=2.2",
+]
+test = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+iran-smart-invest = "engine.__main__:main"
+
+[tool.setuptools]
+packages = [
+  "engine",
+  "engine.data",
+  "engine.providers",
+  "engine.quant",
+  "engine.reports",
+  "engine.notifications",
+  "engine.tests",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["engine"]
+python_files = ["test_*.py"]
+addopts = "-q"
