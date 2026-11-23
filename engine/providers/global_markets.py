@@ -28,13 +28,13 @@ _OPENER = build_opener(_NoRedirects)
 # this environment, so they are NOT given fabricated numbers.
 CATALOG = (
     dict(symbol="BTC/USDT", code="BTCUSDT", provider="binance",
-         group="رمز ارز", currency="USDT"),
+         fallback="BTC-USD", group="رمز ارز", currency="USDT"),
     dict(symbol="ETH/USDT", code="ETHUSDT", provider="binance",
-         group="رمز ارز", currency="USDT"),
+         fallback="ETH-USD", group="رمز ارز", currency="USDT"),
     dict(symbol="XAU/USD (طلا جهانی)", code="GC=F", provider="yahoo",
          group="طلا جهانی", currency="USD"),
     dict(symbol="PAXG/USDT (طلای توکنشده)", code="PAXGUSDT", provider="binance",
-         group="طلا جهانی", currency="USDT"),
+         fallback="PAXG-USD", group="طلا جهانی", currency="USDT"),
     dict(symbol="EUR/USD", code="EURUSD=X", provider="yahoo",
          group="فارکس", currency="USD", volume_ok=True),
     dict(symbol="USD/IRR", code="USDIRR=X", provider="yahoo",
@@ -58,6 +58,16 @@ def get_json(url):
                 raise ProviderError(f"{type(exc).__name__}: {url}") from exc
 
 
+def binance_get(path):
+    """Public Binance data has two official hosts; use either that answers."""
+    for host in ("https://api.binance.com", "https://data-api.binance.vision"):
+        try:
+            return get_json(host + path)
+        except ProviderError:
+            continue
+    raise ProviderError("Binance endpoints unavailable")
+
+
 def _bar(day, o, h, l, c, volume, source):
     return dict(date=day, open=o, high=h, low=l, close=c, volume=volume,
                 value=volume * c, adjusted=True, valid=True, source=source,
@@ -68,9 +78,8 @@ def binance_bars(code, days=200):
     """Daily OHLCV from Binance's public klines endpoint."""
     if not code.isascii() or not code.isalnum():
         raise ProviderError("Invalid Binance symbol")
-    payload = get_json(
-        "https://api.binance.com/api/v3/klines?symbol=" + code +
-        f"&interval=1d&limit={int(days)}")
+    payload = binance_get(
+        "/api/v3/klines?symbol=" + code + f"&interval=1d&limit={int(days)}")
     if not isinstance(payload, list) or not payload:
         raise ProviderError("Invalid klines payload")
     result = []
@@ -132,7 +141,10 @@ def _sorted(bars):
 
 def bars_for(item, days=200):
     if item["provider"] == "binance":
-        return binance_bars(item["code"], days)
+        try:
+            return binance_bars(item["code"], days)
+        except ProviderError:
+            return yahoo_bars(item.get("fallback") or item["code"], days)
     if item["provider"] == "yahoo":
         return yahoo_bars(item["code"], days)
     raise ProviderError("No trusted source configured")
@@ -143,11 +155,15 @@ def latest_prices():
     out = {}
     for item in CATALOG:
         try:
+            code = item["code"]
             if item["provider"] == "binance":
-                payload = get_json("https://api.binance.com/api/v3/ticker/price?symbol=" + item["code"])
-                price = number(payload.get("price"))
+                try:
+                    payload = binance_get("/api/v3/ticker/price?symbol=" + code)
+                    price = number(payload.get("price"))
+                except ProviderError:
+                    price = yahoo_bars(item.get("fallback") or code, days=30)[-1]["close"]
             else:
-                price = yahoo_bars(item["code"], days=30)[-1]["close"]
+                price = yahoo_bars(code, days=30)[-1]["close"]
             if price and price > 0:
                 out[item["symbol"]] = price
         except (ProviderError, ValueError, KeyError, TypeError, OSError):
