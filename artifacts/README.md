@@ -14,7 +14,7 @@
 
 ## فایلهای دانلودشده روی این دستگاه
 
-- ویندوز (آخرین نسخه ۱٫۱٫۰، شامل ورود ذخیرهشده، آیکون جدید و اتصال پایدار): `artifacts/windows-v3/iran_smart_invest.exe` بههمراه پوشهٔ `data/` و فایل `flutter_windows.dll`. قبل از اجرا، نسخهٔ قدیمی را ببندید (فایلهایش در حال استفادهاند) و EXE جدید را از این پوشه باز کنید.
-- اندروید (آخرین نسخه): `C:\Users\amard\AppData\Local\Temp\opencode\artifacts\extract-android-v3\app-debug.apk` — چون حجم آن حدود ۱۵۶ مگابایت است و فضای آزاد درایو D کافی نبود، در پوشهٔ موقت C نگهداری میشود. نسخهٔ همیشهموجود همان Artifact مخزن است.
+- ویندوز (نسخهٔ ۱٫۲٫۰، شامل جزئیات تکنیکال/بنیادی، بازارهای جهانی و بروزرسانی داخل برنامه): `artifacts/windows-v4/iran_smart_invest.exe` بههمراه پوشهٔ `data/` و فایل `flutter_windows.dll`. قبل از اجرا، نسخهٔ قدیمی را ببندید و EXE جدید را از این پوشه باز کنید.
+- اندروید (نسخهٔ ۱٫۲٫۰): `C:\Users\amard\AppData\Local\Temp\opencode\artifacts\extract-android-v4\app-debug.apk` — به دلیل فضای کم درایو D در پوشهٔ موقت C نگهداری میشود. همان نسخه روی GitHub Release (iran-smart-invest-1.2.0.apk) قرار دارد.
 
 پس از آزاد کردن فضا روی درایو D میتوانید فایل APK را به `artifacts/android/` منتقل کنید.
