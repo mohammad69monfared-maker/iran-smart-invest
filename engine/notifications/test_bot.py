@@ -12,6 +12,11 @@ class TelegramTests(unittest.TestCase):
         self.assertNotIn("آزمایشی", render("/signals", self.report, "2026-11-23"))
         self.assertIn("2026-11-22", render("/status", self.report, "2026-11-23"))
 
+    def test_previous_session_report_is_still_current(self):
+        report = dict(self.report, generated_at="2026-11-23T10:00:00+03:30")
+        self.assertIn("آزمایشی", render("/report", report, "2026-11-23"))
+        self.assertIn("جلسه تحلیل", render("/status", report, "2026-11-23"))
+
     def test_unavailable_suppresses_signals(self):
         self.report["status"] = "unavailable"
         self.assertNotIn("آزمایشی", render("/signals", self.report, self.report["date"]))
