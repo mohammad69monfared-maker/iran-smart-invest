@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'jalali.dart';
+import 'live_prices.dart';
 import 'report_store.dart' as data;
 
 void main() => runApp(const InvestApp());
@@ -79,6 +80,9 @@ class _MarketHomeState extends State<MarketHome> {
   data.Row settings = {};
   String? portfolio;
   DateTime? _lastBackPressed;
+  final Map<String, LiveQuote> _live = {};
+  DateTime? _liveAt;
+  bool _liveBusy = false;
   @override
   void initState() {
     super.initState();
@@ -93,12 +97,12 @@ class _MarketHomeState extends State<MarketHome> {
       await reload();
     });
     _sync = Timer.periodic(const Duration(seconds: 45), (_) {
-      if (mounted &&
-          store.connected &&
-          !busy &&
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-        refresh();
+      if (!mounted ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
       }
+      if (store.connected && !busy) refresh();
+      if (marketOpen) syncLive();
     });
   }
 
@@ -132,6 +136,7 @@ class _MarketHomeState extends State<MarketHome> {
       List<data.Row>.from(await store.request('/rest/v1/$path'));
   Future<void> reload() async {
     report = await store.report();
+    unawaited(syncLive());
     if (!store.connected) return;
     portfolios = await rows('portfolios?select=id,name&order=created_at');
     if (!portfolios.any((v) => v['id'] == portfolio))
@@ -157,6 +162,59 @@ class _MarketHomeState extends State<MarketHome> {
   }
 
   Future<void> refresh() => run(reload);
+
+  /// بازار تهران: شنبه تا چهارشنبه، ۰۸:۳۰ تا ۱۲:۵۵ به وقت تهران.
+  bool get marketOpen {
+    final t = DateTime.now().toUtc().add(const Duration(hours: 3, minutes: 30));
+    final tradingDay = t.weekday == 6 || t.weekday == 7 || t.weekday <= 3;
+    final minutes = t.hour * 60 + t.minute;
+    return tradingDay && minutes >= 8 * 60 + 30 && minutes <= 12 * 60 + 55;
+  }
+
+  String _clock(DateTime moment) {
+    final t = moment.toUtc().add(const Duration(hours: 3, minutes: 30));
+    return '${t.hour.toString().padLeft(2, '0')}'
+        ':${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  String money(num value) {
+    final text = value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+    return text.replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+  }
+
+  /// قیمت زنده فقط کنار قیمت گزارش نمایش داده می‌شود و سیگنال‌ها را تغییر
+  /// نمی‌دهد؛ خطای شبکه هرگز گزارش منتشرشده را تحت تأثیر قرار نمی‌دهد.
+  Future<void> syncLive() async {
+    if (_liveBusy) return;
+    final wanted = <String>{};
+    for (final s in opportunities) {
+      final symbol = (s['symbol'] ?? s['symbol_id'])?.toString().trim();
+      if (symbol != null && symbol.isNotEmpty && symbol != 'ناموجود') {
+        wanted.add(symbol);
+      }
+    }
+    if (wanted.isEmpty) {
+      if (mounted && _live.isNotEmpty) setState(_live.clear);
+      return;
+    }
+    _liveBusy = true;
+    try {
+      final quotes = await LivePriceClient().fetch(wanted);
+      if (!mounted) return;
+      setState(() {
+        _live.removeWhere((symbol, _) => !wanted.contains(symbol));
+        _live.addAll(quotes);
+        if (quotes.isNotEmpty) _liveAt = DateTime.now().toUtc();
+      });
+    } catch (_) {
+      // دریافت قیمت زنده اختیاری است؛ خطا فقط گزارش قبلی را نگه می‌دارد.
+    } finally {
+      _liveBusy = false;
+    }
+  }
   List<data.Row> get opportunities => [
         ...(report?['signals'] as List? ?? []),
         ...((((report?['global'] as Map?)?['signals'] as List?) ?? [])),
@@ -311,7 +369,7 @@ class _MarketHomeState extends State<MarketHome> {
     });
   }
 
-  static const appVersion = '1.4.1';
+  static const appVersion = '1.4.2';
 
   int _compareVersion(String a, String b) {
     final x = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
@@ -380,39 +438,49 @@ class _MarketHomeState extends State<MarketHome> {
     const Text('برای نمایش داده‌های شخصی وارد حساب خود شوید.'),
     action('تنظیم اتصال', () => setState(() => page = 6)),
   ]);
-  Widget signal(data.Row s) => card(show(s['symbol'] ?? s['symbol_id']), [
-    line('آخرین قیمت (ریال)', s['price'] ?? s['last_price']),
-    line(
-      'محدوده ورود',
-      s['entry_range'] ??
-          s['entry'] ??
-          [s['entry_low'], s['entry_high']].whereType<num>().join(' – '),
-    ),
-    line('حد ضرر', s['stop_loss'] ?? s['stop']),
-    line(
-      'اهداف خروج',
-      s['targets'] ??
-          [
-            s['target1'] ?? s['target_1'],
-            s['target2'] ?? s['target_2'],
-          ].whereType<num>().toList(),
-    ),
-    line('نسبت سود به زیان', s['reward_risk'] ?? s['risk_reward']),
-    line('دلایل', s['reasons']),
-    line('شرایط ابطال', s['invalidation']),
-    if (s['expires'] != null) line('اعتبار تا', faDate(s['expires'].toString())),
-    line('منبع', s['sources'] ?? s['source']),
-    if (s['market'] != null) line('بازار', s['market']),
-    if (s['technical'] is Map)
-      line('تکنیکال', (s['technical'] as Map)['note'] ?? ''),
-    if (s['fundamental_note'] != null) line('بنیادی', s['fundamental_note']),
-    if (s['backtest'] is Map)
-      line('بک‌تست (شبیه‌سازی)',
-           'بازده ${(((s['backtest'] as Map)['return_after_costs'] as num?) ?? 0) * 100}% · '
-           'بیشترین افت ${(((s['backtest'] as Map)['maximum_drawdown'] as num?) ?? 0) * 100}% · '
-           'نرخ پیروزی ${(((s['backtest'] as Map)['win_rate'] as num?) ?? 0) * 100}% · '
-           'تعداد معاملات ${(s['backtest'] as Map)['number_of_trades'] ?? 0}'),
-  ]);
+  Widget signal(data.Row s) {
+    final id = show(s['symbol'] ?? s['symbol_id']);
+    final symbol = (s['symbol'] ?? s['symbol_id'])?.toString().trim() ?? '';
+    final quote = _live[symbol];
+    return card(id, [
+      line('آخرین قیمت (ریال)', s['price'] ?? s['last_price']),
+      if (quote != null)
+        line('قیمت زنده (به‌روز ${_clock(quote.fetchedAt)})',
+            money(quote.price)),
+      line(
+        'محدوده ورود',
+        s['entry_range'] ??
+            s['entry'] ??
+            [s['entry_low'], s['entry_high']].whereType<num>().join(' – '),
+      ),
+      line('حد ضرر', s['stop_loss'] ?? s['stop']),
+      line(
+        'اهداف خروج',
+        s['targets'] ??
+            [
+              s['target1'] ?? s['target_1'],
+              s['target2'] ?? s['target_2'],
+            ].whereType<num>().toList(),
+      ),
+      line('نسبت سود به زیان', s['reward_risk'] ?? s['risk_reward']),
+      line('دلایل', s['reasons']),
+      line('شرایط ابطال', s['invalidation']),
+      if (s['expires'] != null)
+        line('اعتبار تا', faDate(s['expires'].toString())),
+      line('منبع', s['sources'] ?? s['source']),
+      if (s['market'] != null) line('بازار', s['market']),
+      if (s['technical'] is Map)
+        line('تکنیکال', (s['technical'] as Map)['note'] ?? ''),
+      if (s['fundamental_note'] != null)
+        line('بنیادی', s['fundamental_note']),
+      if (s['backtest'] is Map)
+        line('بک‌تست (شبیه‌سازی)',
+             'بازده ${(((s['backtest'] as Map)['return_after_costs'] as num?) ?? 0) * 100}% · '
+             'بیشترین افت ${(((s['backtest'] as Map)['maximum_drawdown'] as num?) ?? 0) * 100}% · '
+             'نرخ پیروزی ${(((s['backtest'] as Map)['win_rate'] as num?) ?? 0) * 100}% · '
+             'تعداد معاملات ${(s['backtest'] as Map)['number_of_trades'] ?? 0}'),
+    ]);
+  }
   List<Widget> content() {
     final stale = report != null && report!['date'] != today;
     switch (page) {
@@ -453,6 +521,15 @@ class _MarketHomeState extends State<MarketHome> {
       case 1:
         return [
           if (stale) card('گزارش تاریخی', [line('تاریخ', report!['date'])]),
+          if (opportunities.isNotEmpty && _liveAt != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'قیمت‌های زنده از تالار بورس — به‌روزرسانی ${_clock(_liveAt!)}',
+                style: const TextStyle(
+                    color: Color(0xffaebccc), fontSize: 12),
+              ),
+            ),
           if (opportunities.isEmpty)
             card('فرصت‌های گزارش', [
               Text(

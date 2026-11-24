@@ -51,6 +51,23 @@ jobs:
         run: |
           flutter test --reporter compact
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install persistent Android signing key
+        if: matrix.platform == 'android'
+        shell: pwsh
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          # Every runner creates a fresh ~/.android/debug.keystore, which would
+          # give each APK a different signature and force users to uninstall
+          # before updating. The stable keystore lives in repo secrets.
+          if (-not $env:KEYSTORE_B64) {
+            Write-Host 'No keystore secret: falling back to the runner-generated key.'
+            exit 0
+          }
+          New-Item -ItemType Directory -Force -Path "$HOME/.android" | Out-Null
+          [IO.File]::WriteAllBytes("$HOME/.android/debug.keystore",
+            [Convert]::FromBase64String($env:KEYSTORE_B64))
+          Write-Host 'Persistent debug keystore installed.'
       - name: Build
         shell: pwsh
         env:
