@@ -15,6 +15,7 @@ from .data import QualityTracker, validate_bars, tablovani, FundamentalAnalyzer
 from .reporting import archive, render
 from .reports import build_narrative, optional_ollama, technical, fundamental_note
 from .providers.global_markets import analyze_global
+from .backtest_report import backtest_signals
 from .quant import evaluate
 from .portfolio import Ledger
 from .cloud import publish_report, CloudError
@@ -247,6 +248,12 @@ def analyze(now, storage, provider, codal, weights):
         finalists.append(signal)
     finalists.sort(key=lambda s: (-s.get("score", 0), s["symbol"]))
     report["signals"] = finalists[:5]
+    # Historical simulation on archived bars/boards: approximate numbers only,
+    # no fill guarantee and no profit promise.
+    try:
+        backtest_signals(storage, report["signals"])
+    except (ProviderError, ValueError, OSError, KeyError, TypeError, sqlite3.Error):
+        pass
     # Public gold/FX/crypto context is an optional section: a failure there
     # must never suppress the validated stock signals.
     try:

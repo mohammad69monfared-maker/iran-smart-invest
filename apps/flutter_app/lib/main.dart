@@ -78,6 +78,7 @@ class _MarketHomeState extends State<MarketHome> {
       alerts = [];
   data.Row settings = {};
   String? portfolio;
+  DateTime? _lastBackPressed;
   @override
   void initState() {
     super.initState();
@@ -310,7 +311,7 @@ class _MarketHomeState extends State<MarketHome> {
     });
   }
 
-  static const appVersion = '1.3.0';
+  static const appVersion = '1.4.0';
 
   int _compareVersion(String a, String b) {
     final x = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
@@ -405,6 +406,12 @@ class _MarketHomeState extends State<MarketHome> {
     if (s['technical'] is Map)
       line('تکنیکال', (s['technical'] as Map)['note'] ?? ''),
     if (s['fundamental_note'] != null) line('بنیادی', s['fundamental_note']),
+    if (s['backtest'] is Map)
+      line('بک‌تست (شبیه‌سازی)',
+           'بازده ${(((s['backtest'] as Map)['return_after_costs'] as num?) ?? 0) * 100}% · '
+           'بیشترین افت ${(((s['backtest'] as Map)['maximum_drawdown'] as num?) ?? 0) * 100}% · '
+           'نرخ پیروزی ${(((s['backtest'] as Map)['win_rate'] as num?) ?? 0) * 100}% · '
+           'تعداد معاملات ${(s['backtest'] as Map)['number_of_trades'] ?? 0}'),
   ]);
   List<Widget> content() {
     final stale = report != null && report!['date'] != today;
@@ -609,7 +616,6 @@ class _MarketHomeState extends State<MarketHome> {
       default:
         return [
           card('بروزرسانی برنامه', [
-            line('نسخهٔ نصبشده', appVersion),
             action('بررسی نسخهٔ جدید', checkForUpdate),
           ]),
           if (!store.connected)
@@ -670,8 +676,33 @@ class _MarketHomeState extends State<MarketHome> {
             ),
           ],
         ];
+      }
     }
-  }
+
+    /// دکمه برگشت: اگر در صفحهٔ داشبورد نیستیم، به داشبورد برمیگردد.
+    /// اگر در داشبورد هستیم و دو بار پیاپی در مدت کوتاه بزنیم، برنامه خارج میشود.
+    Future<bool> _onWillPop() async {
+      final now = DateTime.now();
+      if (page != 0) {
+        if (mounted) setState(() => page = 0);
+        return false;
+      }
+      if (_lastBackPressed == null ||
+          now.difference(_lastBackPressed!) >
+              const Duration(seconds: 2)) {
+        _lastBackPressed = now;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('برای خروج از برنامه دکمه برگشت را دوباره بزنید.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return false;
+      }
+      return true;
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -713,20 +744,23 @@ class _MarketHomeState extends State<MarketHome> {
         ],
       ),
       drawer: wide ? null : Drawer(child: menu),
-      body: Row(
-        children: [
-          if (wide) SizedBox(width: 220, child: menu),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                if (busy) const LinearProgressIndicator(),
-                if (error != null) card('خطا', [SelectableText(error!)]),
-                ...content(),
-              ],
+      body: WillPopScope(
+        onWillPop: _onWillPop,
+        child: Row(
+          children: [
+            if (wide) SizedBox(width: 220, child: menu),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  if (busy) const LinearProgressIndicator(),
+                  if (error != null) card('خطا', [SelectableText(error!)]),
+                  ...content(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

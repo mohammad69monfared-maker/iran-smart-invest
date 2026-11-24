@@ -6,6 +6,7 @@ from contextlib import closing
 from pathlib import Path
 
 from .reports.jalali import to_jalali
+from .backtest_report import backtest_persian_summary
 
 
 def archive(storage, code, bars, board, symbol, market):
@@ -62,6 +63,7 @@ def render(storage, report):
             f"<p><b>تابلوبانی:</b> جریان حقیقی <bdi>{esc(book.get('net_retail_value', '—'))}</bdi> · "
             f"قدرت خریدار <bdi>{esc(book.get('buyer_power', '—'))}</bdi> · "
             f"نسبت حجم <bdi>{esc(round(book['volume_ratio'], 2) if book.get('volume_ratio') is not None else '—')}</bdi></p>"
+            f"<p><b>بک‌تست:</b> <bdi>{esc(backtest_persian_summary(signal.get('backtest')))}</bdi></p>"
             f"</article>")
 
     overview = report.get("market") or {}
@@ -100,6 +102,21 @@ def render(storage, report):
         "<table><tr><th>نماد</th><th>بازار</th><th>تاریخ داده</th><th>آخرین قیمت</th>"
         "<th>RSI14</th><th>نتیجه</th></tr>" + "".join(global_rows) + "</table>"
         if global_rows else "<p>داده معتبری از منابع عمومی دریافت نشد.</p>")
+    bt_rows = []
+    for signal in report.get("signals", []):
+        bt = signal.get("backtest")
+        if bt:
+            bt_rows.append(
+                "<tr><td><bdi>{}</bdi></td><td><bdi>{}</bdi></td><td><bdi>{}</bdi></td>"
+                "<td><bdi>{}</bdi></td><td><bdi>{}</bdi></td></tr>".format(
+                    esc(signal.get("symbol") or "—"),
+                    esc(f"{bt.get('return_after_costs', 0)*100:+.2f}%" if bt.get('return_after_costs') is not None else "—"),
+                    esc(f"{bt.get('maximum_drawdown', 0)*100:.2f}%" if bt.get('maximum_drawdown') is not None else "—"),
+                    esc(f"{bt.get('win_rate', 0)*100:.1f}%" if bt.get('win_rate') is not None else "—"),
+                    esc(f"{bt.get('number_of_trades', 0)}")))
+    backtest_section = (
+        "<table><tr><th>نماد</th><th>بازده تقریبی</th><th>بیشترین افت</th><th>نرخ پیروزی</th><th>معامله</th></tr>" +
+        "".join(bt_rows) + "</table>" if bt_rows else "<p>داده کافی برای بک‌تست وجود ندارد.</p>")
     content = f"""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش بورس ایران</title>
     <style>
@@ -119,6 +136,10 @@ def render(storage, report):
     <section><h2>بازارهای جهانی: طلا، فارکس و رمز ارز</h2>{global_table}
     <p class="muted">قیمت طلای جهانی از قرارداد COMEX و طلای توکنشده از Binance است؛ معادل قیمت سکه و طلای فیزیکی ایران نیست.</p></section>
     {''.join(cards)}
+    <section><h2>بک‌تست سیگنال‌ها (شبیه‌سازی — تضمین سود نیست)</h2>
+    <p class="muted">بک‌تست بر پایهٔ تاریخچه واقعی و قیمت‌های archived است. Fill و ejecut اجرا واقعی را پیمایش نمی‌کند و سود آینده تضمین نمی‌شود.</p>
+    {backtest_section}
+    </section>
     <section><h2>سبد سهام و هشدارها</h2><p>ارزش ثبتشده {market_value}</p><ul>{alerts}</ul></section>
     <section><h2>روایت گزارش</h2><pre>{narrative}</pre></section>
     <details><summary>وضعیت خام منابع</summary><pre>{sources}</pre></details>
