@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'jalali.dart';
+import 'live_markets.dart';
 import 'live_prices.dart';
 import 'report_store.dart' as data;
 
@@ -83,6 +84,10 @@ class _MarketHomeState extends State<MarketHome> {
   final Map<String, LiveQuote> _live = {};
   DateTime? _liveAt;
   bool _liveBusy = false;
+  final Map<String, MarketQuote> _markets = {};
+  DateTime? _marketsAt;
+  bool _marketsBusy = false;
+  Timer? _marketSync;
   @override
   void initState() {
     super.initState();
@@ -104,11 +109,19 @@ class _MarketHomeState extends State<MarketHome> {
       if (store.connected && !busy) refresh();
       if (marketOpen) syncLive();
     });
+    _marketSync = Timer.periodic(const Duration(seconds: 120), (_) {
+      if (!mounted ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+      if (ratesOpen) syncMarkets();
+    });
   }
 
   @override
   void dispose() {
     _sync?.cancel();
+    _marketSync?.cancel();
     for (final t in [endpoint, keyField, email, password, query]) {
       t.dispose();
     }
@@ -137,6 +150,7 @@ class _MarketHomeState extends State<MarketHome> {
   Future<void> reload() async {
     report = await store.report();
     unawaited(syncLive());
+    unawaited(syncMarkets());
     if (!store.connected) return;
     portfolios = await rows('portfolios?select=id,name&order=created_at');
     if (!portfolios.any((v) => v['id'] == portfolio))
@@ -215,6 +229,99 @@ class _MarketHomeState extends State<MarketHome> {
       _liveBusy = false;
     }
   }
+  /// نرخ‌های طلا و ارز تهران تا حدود ساعت ۲۲ به‌روز می‌شوند.
+  bool get ratesOpen {
+    final t = DateTime.now().toUtc().add(const Duration(hours: 3, minutes: 30));
+    final minutes = t.hour * 60 + t.minute;
+    return minutes >= 8 * 60 && minutes <= 22 * 60;
+  }
+
+  /// نرخ لحظه‌ای از TGJU؛ خطا هرگز به گزارش یا بقیهٔ صفحه‌ها سرایت نمی‌کند و
+  /// آخرین مقدار معتبر روی صفحه می‌ماند.
+  Future<void> syncMarkets() async {
+    if (_marketsBusy) return;
+    _marketsBusy = true;
+    try {
+      final quotes = await LiveMarketClient().fetch();
+      if (!mounted) return;
+      setState(() {
+        _markets
+          ..clear()
+          ..addAll(quotes);
+        if (quotes.isNotEmpty) _marketsAt = DateTime.now().toUtc();
+      });
+    } catch (_) {
+      // بخش نرخ‌ها اختیاری است؛ نمایش گزارش بدون آن ادامه می‌یابد.
+    } finally {
+      _marketsBusy = false;
+    }
+  }
+
+  Widget _marketTile(MarketQuote quote) {
+    final value = quote.unit == 'تومان'
+        ? money(quote.price / 10)
+        : quote.price.toStringAsFixed(2);
+    final pct = quote.changePercent;
+    final color = pct == null
+        ? const Color(0xffaebccc)
+        : (pct >= 0 ? const Color(0xff4cc38a) : const Color(0xffe4676b));
+    return Container(
+      width: 172,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xff16202b),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xff24303d)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(quote.label,
+              style:
+                  const TextStyle(fontSize: 13, color: Color(0xffaebccc))),
+          const SizedBox(height: 8),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(quote.unit,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xff7f8fa0))),
+              const SizedBox(width: 8),
+              Text(
+                pct == null
+                    ? '—'
+                    : '${pct >= 0 ? '+' : ''}${pct.toStringAsFixed(2)}%',
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold, color: color),
+              ),
+              const SizedBox(width: 8),
+              Text(quote.updatedAt ?? '—',
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xff7f8fa0))),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _marketBoard() => card('نرخ لحظه‌ای طلا و دلار', [
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: _markets.values.map(_marketTile).toList(),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'منبع: TGJU (tgju.org) — به‌روزرسانی'
+          '${_marketsAt == null ? '' : ' ${_clock(_marketsAt!)}'}',
+          style: const TextStyle(fontSize: 11, color: Color(0xff7f8fa0)),
+        ),
+      ]);
+
   List<data.Row> get opportunities => [
         ...(report?['signals'] as List? ?? []),
         ...((((report?['global'] as Map?)?['signals'] as List?) ?? [])),
@@ -369,7 +476,7 @@ class _MarketHomeState extends State<MarketHome> {
     });
   }
 
-  static const appVersion = '1.4.2';
+  static const appVersion = '1.4.3';
 
   int _compareVersion(String a, String b) {
     final x = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
@@ -486,6 +593,7 @@ class _MarketHomeState extends State<MarketHome> {
     switch (page) {
       case 0:
         return [
+          if (_markets.isNotEmpty) _marketBoard(),
           card('آخرین گزارش', [
             if (report == null)
               Text(
