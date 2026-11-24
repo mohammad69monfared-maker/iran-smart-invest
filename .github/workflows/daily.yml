@@ -2,7 +2,12 @@ name: Daily market report
 on:
   workflow_dispatch:
   schedule:
+    # TSETMC publishes the settled closing list late in the day: a 14:05
+    # Tehran run often still sees yesterday's session. The evening runs make
+    # sure the current session is analysed once its data is actually out.
     - cron: '35 10 * * 0-3,6'
+    - cron: '30 17 * * 0-3,6'
+    - cron: '0 19 * * 0-3,6'
 permissions:
   contents: read
 concurrency:
