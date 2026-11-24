@@ -311,7 +311,7 @@ class _MarketHomeState extends State<MarketHome> {
     });
   }
 
-  static const appVersion = '1.4.0';
+  static const appVersion = '1.4.1';
 
   int _compareVersion(String a, String b) {
     final x = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
@@ -592,7 +592,9 @@ class _MarketHomeState extends State<MarketHome> {
         return [
           card('بازارهای جهانی', [
             if (items.isEmpty)
-              const Text('داده معتبری از منابع عمومی دریافت نشد.'),
+              Text(report?['status'] == 'closed'
+                  ? 'بازارهای جهانی در این نوبت واکشی نشد (خارج از بازه تحلیل روزانه).'
+                  : 'داده معتبری از منابع عمومی دریافت نشد.'),
             ...items.map((item) {
               final tech = (item['technical'] as Map?) ?? {};
               return card(

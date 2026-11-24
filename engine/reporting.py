@@ -98,10 +98,14 @@ def render(storage, report):
                 (to_jalali(item["date"]) + f" ({item['date']})") if item.get("date") else "—",
                 esc(item.get("last_price") or "—"),
                 esc(tech.get("rsi14", "—")), state))
-    global_table = (
-        "<table><tr><th>نماد</th><th>بازار</th><th>تاریخ داده</th><th>آخرین قیمت</th>"
-        "<th>RSI14</th><th>نتیجه</th></tr>" + "".join(global_rows) + "</table>"
-        if global_rows else "<p>داده معتبری از منابع عمومی دریافت نشد.</p>")
+    if global_rows:
+        global_table = (
+            "<table><tr><th>نماد</th><th>بازار</th><th>تاریخ داده</th><th>آخرین قیمت</th>"
+            "<th>RSI14</th><th>نتیجه</th></tr>" + "".join(global_rows) + "</table>")
+    elif report.get("status") == "closed":
+        global_table = "<p>بازارهای جهانی در این نوبت واکشی نشد (خارج از بازه تحلیل روزانه).</p>"
+    else:
+        global_table = "<p>داده معتبری از منابع عمومی دریافت نشد.</p>"
     bt_rows = []
     for signal in report.get("signals", []):
         bt = signal.get("backtest")

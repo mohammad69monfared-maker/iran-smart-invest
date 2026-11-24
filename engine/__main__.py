@@ -73,7 +73,8 @@ def analyze(now, storage, provider, codal, weights):
                   signals=[], alerts=[], sources={}, portfolio={}, status="unavailable")
     quality = QualityTracker()
     if now.weekday() in (3, 4) or (now.hour, now.minute) < (12, 35):
-        report.update(status="closed", summary="خارج از زمان تحلیل پایان جلسه")
+        report.update(status="closed",
+                      summary="خارج از بازه زمانی تحلیل روزانه است؛ در این نوبت سیگنالی صادر نشد.")
         return report
     try:
         instruments = provider.universe()
@@ -289,6 +290,26 @@ def analyze(now, storage, provider, codal, weights):
     return report
 
 
+def kept_report(storage, report):
+    """Return the last real analysis when a run happens outside the window.
+
+    Before 12:35 Tehran or on Thu/Fri the engine returns a `closed` stub with
+    no signals and no global context. Publishing that stub would hide the
+    latest genuine report from the app, the HTML page and Telegram, so the
+    previous ok/partial snapshot is kept instead and the stub is dropped.
+    """
+    if report.get("status") != "closed":
+        return None
+    latest = storage / "latest.json"
+    if not latest.exists():
+        return None
+    try:
+        previous = json.loads(latest.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return None
+    return previous if previous.get("status") in ("ok", "partial") else None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=Path, default=ROOT / "data")
@@ -310,6 +331,15 @@ def main():
         if args.force or report.get("status") != "ok":
             weights = json.loads((ROOT / "strategy.json").read_text(encoding="utf-8"))["weights"]
             report = analyze(now, storage, Tsetmc(), Codal(), weights)
+        kept = kept_report(storage, report)
+        if kept is not None:
+            # Out-of-hours run: keep the last real analysis instead of
+            # overwriting it with an empty "closed" stub.
+            render(storage, kept)
+            db.commit()
+            print(f"report={storage / 'latest.json'} status=kept date={kept.get('date')} "
+                  "reason=outside-analysis-window")
+            return 0
         db.execute("INSERT OR REPLACE INTO reports VALUES(?,?)",
                    (report["date"], json.dumps(report, ensure_ascii=False, allow_nan=False)))
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=storage,

@@ -1,4 +1,5 @@
 """End-to-end analysis with synthetic providers. Never emitted as a real report."""
+import json
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -92,6 +93,25 @@ class EngineIntegrationTests(unittest.TestCase):
         report = analyze(now, Path(tmp.name), FakeProvider(synthetic_bars()), FakeCodal(), {})
         self.assertEqual(report["status"], "closed")
         self.assertEqual(report["signals"], [])
+
+    def test_closed_run_never_replaces_a_real_report(self):
+        from engine.__main__ import kept_report
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        storage = Path(tmp.name)
+        closed = dict(date="2026-3-31", status="closed", signals=[])
+        # No previous snapshot: the stub is published as-is.
+        self.assertIsNone(kept_report(storage, closed))
+        good = dict(date="2026-3-30", status="ok", signals=[{"symbol": "آزمون"}])
+        (storage / "latest.json").write_text(json.dumps(good), encoding="utf-8")
+        # A real previous analysis is kept instead of being overwritten.
+        self.assertEqual(kept_report(storage, closed), good)
+        # In-hours reports are published normally.
+        self.assertIsNone(kept_report(storage, dict(date="2026-3-31", status="ok")))
+        # A broken snapshot is never resurrected.
+        (storage / "latest.json").write_text(
+            json.dumps(dict(date="2026-3-30", status="closed")), encoding="utf-8")
+        self.assertIsNone(kept_report(storage, closed))
 
 
 if __name__ == "__main__":
