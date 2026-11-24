@@ -163,7 +163,7 @@ SymbolProfile parseProfile(String body) {
   final sectorMap = info['sector'];
   final epsMap = info['eps'];
   final sector = sectorMap is Map
-      ? (sectorMap['lSecVal'] ?? '').toString().trim()
+      ? (_text(sectorMap['lSecVal']) ?? '')
       : '';
   return SymbolProfile(
     insCode: insCode,
@@ -189,7 +189,9 @@ SymbolProfile parseProfile(String body) {
 
 String? _text(dynamic value) {
   final text = value?.toString().trim() ?? '';
-  return text.isEmpty ? null : text;
+  // TSETMC uses dash/quote placeholders for instruments with no board title.
+  if (text.replaceAll(RegExp(r'''[\s'"\-]+'''), '').isEmpty) return null;
+  return text;
 }
 
 double? _number(dynamic value) {
