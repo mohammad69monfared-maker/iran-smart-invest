@@ -20,8 +20,16 @@ try {
         }
     }
     [Environment]::SetEnvironmentVariable('PYTHONIOENCODING', 'utf-8')
-    & $PythonPath -m engine
-    $analysisExit = $LASTEXITCODE
+    # A single stalled HTTP read used to block the whole run (and the SQLite
+    # lock) for hours. Cap the analysis and kill the process tree if it hangs.
+    $process = Start-Process -FilePath $PythonPath -ArgumentList '-m', 'engine' -PassThru -NoNewWindow
+    if (-not $process.WaitForExit(90 * 60 * 1000)) {
+        Write-Warning 'Analysis exceeded 90 minutes; stopping the hung run.'
+        try { $process.Kill($true) } catch { }
+        $analysisExit = 124
+    } else {
+        $analysisExit = $process.ExitCode
+    }
     & $PythonPath -m engine.notifications publish
     if ($LASTEXITCODE -ne 0) { Write-Warning 'Telegram delivery failed.' }
     exit $analysisExit
