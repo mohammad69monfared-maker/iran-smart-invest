@@ -1,7 +1,7 @@
 name: iran_smart_invest
 description: Persian stock market analysis client
 publish_to: none
-version: 1.4.3+8
+version: 1.4.4+9
 environment:
   sdk: '>=3.5.0 <4.0.0'
 dependencies:
